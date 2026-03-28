@@ -1,90 +1,56 @@
-# Etsy Digital Items Creator
+# 🛍️ EtsyGen — Personal Digital Product Generator
 
-A Flask web application for managing and publishing digital product listings to Etsy.
-
-## Features
-
-- **Dashboard** – overview of all your digital items with status stats
-- **Create / Edit / Delete** digital item listings (title, description, price, tags, category)
-- **File uploads** – attach downloadable files to each listing (PDF, PNG, JPG, GIF, SVG, ZIP, EPS)
-- **Etsy API integration** – publish or update listings directly on Etsy via the Open API v3
-- **Status management** – draft, active, inactive
-- **JSON API** – `/api/items` and `/api/items/<id>` endpoints for programmatic access
+A personal tool for generating high-quality printable digital products to sell on Etsy. Completely free to run using free AI APIs.
 
 ## Quick Start
 
-### 1. Clone & install dependencies
-
 ```bash
-git clone https://github.com/DarkCommander27/Etsy.git
-cd Etsy
-python -m venv .venv
-source .venv/bin/activate   # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
+npm install
+cp .env.example .env.local
+# Add your API key to .env.local
+npm run dev
 ```
 
-### 2. Configure environment
+Open [http://localhost:3000](http://localhost:3000)
 
-```bash
-cp .env.example .env
-# Edit .env and fill in your SECRET_KEY and Etsy API credentials
-```
+## Getting Free API Keys
 
-### 3. Run the app
+### Google Gemini (Recommended)
+1. Go to [ai.google.dev](https://ai.google.dev)
+2. Click "Get API key" — no credit card needed
+3. Add to `.env.local`: `GEMINI_API_KEY=your-key`
 
-```bash
-python run.py
-```
+### Groq (Fastest)
+1. Go to [console.groq.com](https://console.groq.com)
+2. Sign up and create a free API key
+3. Add to `.env.local`: `GROQ_API_KEY=your-key`
 
-Open http://127.0.0.1:5000 in your browser.
+### Ollama (Local, Unlimited)
+1. Install from [ollama.com](https://ollama.com)
+2. Run: `ollama pull llama3`
+3. No API key needed — select Ollama in Settings
 
-## Etsy API Setup
+## Configuring AI Provider
 
-1. Create an app at https://www.etsy.com/developers/your-apps
-2. Note your **API Key** and **API Secret**
-3. Complete the OAuth 2.0 flow to obtain an **Access Token**
-4. Find your **Shop ID** from your Etsy shop URL or the developer portal
-5. Add these values to your `.env` file:
+Go to **Settings** in the app sidebar and select your provider, or set `DEFAULT_AI_PROVIDER=gemini` in `.env.local`.
 
-```
-ETSY_API_KEY=your_api_key
-ETSY_API_SECRET=your_api_secret
-ETSY_ACCESS_TOKEN=your_oauth_access_token
-ETSY_SHOP_ID=your_shop_id
-```
+## Generating Your First Product
 
-Once configured, use the **Publish to Etsy** button on any item's detail page.
+1. Click **Generate** in the sidebar
+2. Pick a niche (ADHD, MDD, Anxiety, Social, General, Techie)
+3. Pick a product type
+4. Customize colors, font, page size
+5. Click **Generate Content with AI**
+6. Download your PDF
+7. Use **Etsy Helper** to generate the listing title, tags, and description
 
-## Project Structure
+## Niches & Products
 
-```
-app/
-  __init__.py       # Flask app factory
-  models.py         # SQLAlchemy models (DigitalItem, DigitalFile)
-  routes.py         # Blueprint with all web and API routes
-  etsy_api.py       # Etsy Open API v3 client
-  templates/        # Jinja2 HTML templates
-  static/           # CSS and JS assets
-config.py           # Configuration classes
-run.py              # Entry point
-tests/              # pytest test suite
-requirements.txt
-.env.example
-```
-
-## Running Tests
-
-```bash
-python -m pytest tests/ -v
-```
-
-## Environment Variables
-
-| Variable | Description |
-|---|---|
-| `SECRET_KEY` | Flask secret key (required) |
-| `DATABASE_URL` | SQLAlchemy DB URI (defaults to SQLite `etsy_items.db`) |
-| `ETSY_API_KEY` | Etsy Open API key |
-| `ETSY_API_SECRET` | Etsy API secret |
-| `ETSY_ACCESS_TOKEN` | OAuth 2.0 access token |
-| `ETSY_SHOP_ID` | Your Etsy shop ID |
+| Niche | Products |
+|-------|---------|
+| 🧠 ADHD | Daily Planner, Brain Dump, Dopamine Menu, Micro-Task Breaker, Habit Streak, Morning Ritual, Focus Timer, Weekly Reset |
+| 💙 MDD | Mood Check-In, Gratitude Journal, Small Win Cards, Self-Care Menu, Therapy Prep, Affirmation Deck, Progress Tracker, Gentle Planner |
+| 🌊 Anxiety | CBT Thought Record, 5-4-3-2-1 Grounding, Box Breathing, Worry Dump, Safety Plan, Calm Down Kit, Control Circle, Anxiety Tracker |
+| 🤝 Social | Conversation Starters, Social Battery Tracker, Boundary Scripts, Post-Social Recovery, Email Templates, Meeting Prep, Small Talk Guide, Social Goals |
+| 🌟 General | Weekly/Monthly Planner, Budget Tracker, Meal Planner, Goal Setting, Cleaning Schedule, Reading/Fitness/Habit Tracker, Vision Board |
+| 💻 Techie | Sprint Planner, Code Review Checklist, Side Project Tracker, Learning Roadmap, Bug Triage, Standup Notes, Retro Template, System Design |
