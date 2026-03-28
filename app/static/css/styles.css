@@ -1,0 +1,32 @@
+/* Etsy Digital Items – custom styles */
+
+body {
+  background-color: #f8f9fa;
+}
+
+.navbar-brand {
+  font-size: 1.1rem;
+}
+
+.card {
+  border-radius: 0.5rem;
+}
+
+.etsy-badge {
+  background-color: #f1641e !important;
+}
+
+/* Highlight active nav link */
+.navbar .nav-link.active {
+  font-weight: 600;
+}
+
+/* Responsive table */
+@media (max-width: 576px) {
+  .table th:nth-child(3),
+  .table td:nth-child(3),
+  .table th:nth-child(5),
+  .table td:nth-child(5) {
+    display: none;
+  }
+}
