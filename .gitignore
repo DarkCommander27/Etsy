@@ -35,14 +35,11 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# Python
-__pycache__/
-*.pyc
-*.pyo
-.pytest_cache/
-.coverage
-*.egg-info/
-
 # data / uploads
 /data/*.json
 /uploads/
+
+# API keys and secrets
+OpenAI_Api*
+openai_api*
+*_api_key*
