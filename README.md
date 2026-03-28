@@ -41,8 +41,21 @@ Go to **Settings** in the app sidebar and select your provider, or set `DEFAULT_
 3. Pick a product type
 4. Customize colors, font, page size
 5. Click **Generate Content with AI**
-6. Download your PDF
-7. Use **Etsy Helper** to generate the listing title, tags, and description
+6. **Review the quality score** — the app automatically validates content and may retry if quality is low
+7. Download your PDF
+8. Use **Etsy Helper** to generate the listing title, tags, and description
+
+## ✨ Quality Features
+
+EtsyGen includes an **automatic quality validation system** that ensures high-quality products:
+
+- **Intelligent Validation**: Checks JSON structure, content completeness, and niche relevance
+- **Quality Scoring**: 0-100 score with visual feedback (🌟 Excellent, ✅ Good, ⚠️ Acceptable)
+- **Automatic Retry**: If first generation is low-quality, automatically retries with different AI parameters
+- **User Feedback**: Shows specific issues and suggestions for improvement
+- **Multiple Attempts**: Tries up to 3 times and returns the best result
+
+See [QUALITY_FEATURES.md](./QUALITY_FEATURES.md) for detailed documentation.
 
 ## Niches & Products
 
