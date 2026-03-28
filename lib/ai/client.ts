@@ -41,7 +41,8 @@ export function createAIClient(settings?: AISettings) {
 
 export async function generateContent(
   prompt: string,
-  settings?: AISettings
+  settings?: AISettings,
+  temperature: number = 0.7
 ): Promise<string> {
   const { client, model } = createAIClient(settings);
 
@@ -55,7 +56,7 @@ export async function generateContent(
       },
       { role: 'user', content: prompt },
     ],
-    temperature: 0.7,
+    temperature,
     max_tokens: 2000,
   });
 

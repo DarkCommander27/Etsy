@@ -138,6 +138,7 @@ function GenerateContent() {
   const [error, setError] = useState('');
   const [pdfUrl, setPdfUrl] = useState('');
   const [editableContent, setEditableContent] = useState('');
+  const [qualityInfo, setQualityInfo] = useState<{ score: number; passed: boolean; issues: string[]; warnings: string[] } | null>(null);
 
   // Step 6 — Etsy listing
   const [etsyListing, setEtsyListing] = useState<EtsyListing | null>(null);
@@ -176,6 +177,7 @@ function GenerateContent() {
   async function generateAIContent() {
     setLoading(true);
     setError('');
+    setQualityInfo(null);
     try {
       const res = await fetch('/api/generate-content', {
         method: 'POST',
@@ -186,6 +188,7 @@ function GenerateContent() {
       if (data.error) throw new Error(data.error);
       setContent(data.content);
       setEditableContent(JSON.stringify(data.content, null, 2));
+      setQualityInfo(data.quality || null);
       setStep(5);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to generate content');
@@ -449,6 +452,69 @@ function GenerateContent() {
             <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100">✅ Content generated! Review your product.</h2>
             <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">This is what will be on your PDF. Happy with it? Download the PDF, then continue to create your Etsy listing.</p>
           </div>
+
+          {/* Quality Indicator */}
+          {qualityInfo && (
+            <Card padding="md" className="mb-4">
+              <div className="flex items-start gap-3">
+                <div className="shrink-0">
+                  {qualityInfo.score >= 85 ? (
+                    <span className="text-2xl">🌟</span>
+                  ) : qualityInfo.score >= 70 ? (
+                    <span className="text-2xl">✅</span>
+                  ) : (
+                    <span className="text-2xl">⚠️</span>
+                  )}
+                </div>
+                <div className="flex-1">
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="font-semibold text-sm text-slate-800 dark:text-slate-200">
+                      Quality Score: {qualityInfo.score}/100
+                    </h3>
+                    <span className={`text-xs px-2 py-0.5 rounded-full ${
+                      qualityInfo.score >= 85
+                        ? 'bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300'
+                        : qualityInfo.score >= 70
+                        ? 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300'
+                        : 'bg-yellow-100 dark:bg-yellow-900 text-yellow-700 dark:text-yellow-300'
+                    }`}>
+                      {qualityInfo.score >= 85 ? 'Excellent' : qualityInfo.score >= 70 ? 'Good' : 'Acceptable'}
+                    </span>
+                  </div>
+                  {qualityInfo.issues.length > 0 && (
+                    <div className="mb-2">
+                      <p className="text-xs font-medium text-red-600 dark:text-red-400 mb-1">Issues:</p>
+                      <ul className="space-y-1">
+                        {qualityInfo.issues.map((issue, i) => (
+                          <li key={i} className="text-xs text-red-600 dark:text-red-400 flex gap-1">
+                            <span>•</span><span>{issue}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {qualityInfo.warnings.length > 0 && (
+                    <div>
+                      <p className="text-xs font-medium text-amber-600 dark:text-amber-400 mb-1">Suggestions:</p>
+                      <ul className="space-y-1">
+                        {qualityInfo.warnings.map((warning, i) => (
+                          <li key={i} className="text-xs text-amber-600 dark:text-amber-400 flex gap-1">
+                            <span>•</span><span>{warning}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {qualityInfo.score >= 85 && qualityInfo.issues.length === 0 && (
+                    <p className="text-xs text-green-600 dark:text-green-400">
+                      ✨ Your content meets high-quality standards and is ready for professional use!
+                    </p>
+                  )}
+                </div>
+              </div>
+            </Card>
+          )}
+
           <div className="grid md:grid-cols-2 gap-6">
             {/* Content Preview */}
             <div>
