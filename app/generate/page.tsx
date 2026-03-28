@@ -11,6 +11,12 @@ import { Spinner } from '@/components/ui/Spinner';
 const FONTS = ['Clean Sans-Serif', 'Friendly Rounded', 'Professional Serif', 'Handwritten'];
 const PAGE_SIZES = ['letter', 'a4', 'a5'];
 
+interface EtsyListing {
+  title: string;
+  tags: string[];
+  description: string;
+}
+
 function GenerateContent() {
   const searchParams = useSearchParams();
   const [step, setStep] = useState(1);
@@ -26,18 +32,37 @@ function GenerateContent() {
   const [pdfUrl, setPdfUrl] = useState('');
   const [editableContent, setEditableContent] = useState('');
 
+  // Step 6 — Etsy listing
+  const [etsyListing, setEtsyListing] = useState<EtsyListing | null>(null);
+  const [etsyLoading, setEtsyLoading] = useState(false);
+  const [etsyPrice, setEtsyPrice] = useState('5.00');
+  const [etsyConnected, setEtsyConnected] = useState(false);
+  const [etsyPublishing, setEtsyPublishing] = useState(false);
+  const [etsyPublished, setEtsyPublished] = useState<{ listing_id: number; url?: string; warning?: string } | null>(null);
+  const [etsyError, setEtsyError] = useState('');
+  const [copied, setCopied] = useState<string | null>(null);
+
   const niche = getNicheById(nicheId);
   const product = niche?.products.find((p) => p.id === productTypeId);
   const colorScheme = niche?.colorSchemes.find((c) => c.id === colorSchemeId) || niche?.colorSchemes[0];
 
   useEffect(() => {
     if (nicheId && searchParams.get('niche')) setStep(2);
+    // Check Etsy connection
+    fetch('/api/etsy/status').then((r) => r.json()).then(({ connected }) => setEtsyConnected(!!connected)).catch(() => {});
   }, [nicheId, searchParams]);
 
+  // Auto-generate Etsy listing when entering step 6
+  useEffect(() => {
+    if (step === 6 && !etsyListing && !etsyLoading && nicheId && productTypeId) {
+      generateEtsyListing();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step]);
+
   function getSettings() {
-    try {
-      return JSON.parse(localStorage.getItem('etsygen-settings') || '{}');
-    } catch { return {}; }
+    try { return JSON.parse(localStorage.getItem('etsygen-settings') || '{}'); }
+    catch { return {}; }
   }
 
   async function generateAIContent() {
@@ -87,21 +112,78 @@ function GenerateContent() {
     }
   }
 
-  const steps = ['Niche', 'Product', 'Customize', 'Generate', 'Export'];
+  async function generateEtsyListing() {
+    setEtsyLoading(true);
+    setEtsyError('');
+    try {
+      const res = await fetch('/api/generate-etsy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nicheId, productTypeId, productName: title || product?.name, settings: getSettings() }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      setEtsyListing(data.listing);
+    } catch (e) {
+      setEtsyError(e instanceof Error ? e.message : 'Failed to generate Etsy listing');
+    } finally {
+      setEtsyLoading(false);
+    }
+  }
+
+  async function publishToEtsy() {
+    if (!etsyListing) return;
+    setEtsyPublishing(true);
+    setEtsyError('');
+    try {
+      const s = getSettings();
+      let finalContent = content;
+      try { finalContent = JSON.parse(editableContent); } catch { /* use original */ }
+
+      const res = await fetch('/api/etsy/publish', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: etsyListing.title,
+          description: etsyListing.description,
+          tags: etsyListing.tags,
+          price: parseFloat(etsyPrice) || 5.0,
+          shopId: s.etsyShopId,
+          apiKey: s.etsyApiKey,
+          pdfOptions: { pageSize, colorScheme, title: title || product?.name, nicheId, productTypeId, content: finalContent },
+        }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      setEtsyPublished({ listing_id: data.listing?.listing_id, warning: data.warning });
+    } catch (e) {
+      setEtsyError(e instanceof Error ? e.message : 'Failed to publish to Etsy');
+    } finally {
+      setEtsyPublishing(false);
+    }
+  }
+
+  async function copyText(text: string, key: string) {
+    await navigator.clipboard.writeText(text);
+    setCopied(key);
+    setTimeout(() => setCopied(null), 2000);
+  }
+
+  const steps = ['Niche', 'Product', 'Customize', 'Generate', 'Review', 'List on Etsy'];
 
   return (
     <div className="p-6 max-w-4xl mx-auto">
       <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100 mb-2">Generate Product</h1>
 
       {/* Step indicator */}
-      <div className="flex items-center gap-2 mb-8 overflow-x-auto">
+      <div className="flex items-center gap-1.5 mb-8 overflow-x-auto pb-1">
         {steps.map((s, i) => (
-          <div key={s} className="flex items-center gap-2 shrink-0">
+          <div key={s} className="flex items-center gap-1.5 shrink-0">
             <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${step > i + 1 ? 'bg-green-500 text-white' : step === i + 1 ? 'bg-indigo-600 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-500'}`}>
               {step > i + 1 ? '✓' : i + 1}
             </div>
-            <span className={`text-sm ${step === i + 1 ? 'font-semibold text-indigo-600 dark:text-indigo-400' : 'text-slate-500'}`}>{s}</span>
-            {i < steps.length - 1 && <div className="w-6 h-px bg-slate-300 dark:bg-slate-600" />}
+            <span className={`text-sm hidden sm:inline ${step === i + 1 ? 'font-semibold text-indigo-600 dark:text-indigo-400' : 'text-slate-500'}`}>{s}</span>
+            {i < steps.length - 1 && <div className="w-4 h-px bg-slate-300 dark:bg-slate-600" />}
           </div>
         ))}
       </div>
@@ -192,7 +274,7 @@ function GenerateContent() {
             Click below to have AI generate the content for your <strong>{product.name}</strong>. You can edit it in the next step.
           </p>
           <Card padding="md" className="mb-6">
-            <div className="flex items-center gap-3 mb-3">
+            <div className="flex items-center gap-3">
               <span className="text-2xl">{niche.icon}</span>
               <div>
                 <p className="font-semibold">{title || product.name}</p>
@@ -207,11 +289,11 @@ function GenerateContent() {
         </div>
       )}
 
-      {/* Step 5: Preview & Export */}
+      {/* Step 5: Review & Export */}
       {step === 5 && content && (
         <div>
           <button onClick={() => setStep(4)} className="text-sm text-indigo-600 dark:text-indigo-400 hover:underline mb-4 flex items-center gap-1">← Back</button>
-          <h2 className="text-lg font-semibold mb-4">Step 5: Preview & Export</h2>
+          <h2 className="text-lg font-semibold mb-4">Step 5: Review & Export PDF</h2>
           <div className="grid md:grid-cols-2 gap-6">
             <div>
               <h3 className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Generated Content (editable)</h3>
@@ -240,18 +322,189 @@ function GenerateContent() {
               </Button>
               {pdfUrl && (
                 <a href={pdfUrl} target="_blank" rel="noopener noreferrer"
-                  className="block text-center text-sm text-indigo-600 dark:text-indigo-400 hover:underline">
+                  className="block text-center text-sm text-indigo-600 dark:text-indigo-400 hover:underline mb-4">
                   Open PDF in new tab
                 </a>
               )}
-              <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700">
-                <p className="text-xs text-slate-500 mb-2">Next steps:</p>
-                <a href="/etsy-helper" className="text-sm text-indigo-600 dark:text-indigo-400 hover:underline block">
-                  → Generate Etsy listing (title, tags, description)
-                </a>
-              </div>
+              <Button
+                onClick={() => setStep(6)}
+                variant="secondary"
+                size="lg"
+                className="w-full"
+              >
+                Next: Create Etsy Listing →
+              </Button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Step 6: List on Etsy */}
+      {step === 6 && (
+        <div>
+          <button onClick={() => setStep(5)} className="text-sm text-indigo-600 dark:text-indigo-400 hover:underline mb-4 flex items-center gap-1">← Back</button>
+          <h2 className="text-lg font-semibold mb-2">Step 6: List on Etsy</h2>
+          <p className="text-slate-500 dark:text-slate-400 text-sm mb-5">
+            AI generates an SEO-optimized title, tags, and description. Review, adjust price, then publish.
+          </p>
+
+          {etsyError && (
+            <div className="mb-4 p-3 bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded-lg text-red-700 dark:text-red-300 text-sm">
+              {etsyError}
+              {!etsyConnected && (
+                <span> — <a href="/settings" className="underline">Connect Etsy in Settings</a></span>
+              )}
+            </div>
+          )}
+
+          {etsyPublished ? (
+            <Card padding="lg" className="text-center">
+              <p className="text-4xl mb-3">🎉</p>
+              <p className="text-xl font-bold text-green-600 dark:text-green-400 mb-2">Draft Created on Etsy!</p>
+              {etsyPublished.warning && (
+                <p className="text-sm text-amber-600 dark:text-amber-400 mb-3 bg-amber-50 dark:bg-amber-950 p-2 rounded">{etsyPublished.warning}</p>
+              )}
+              <p className="text-slate-500 text-sm mb-4">
+                Listing ID: {etsyPublished.listing_id} — Go to your Etsy shop to review and publish.
+              </p>
+              <div className="flex gap-3 justify-center flex-wrap">
+                <a
+                  href="https://www.etsy.com/your/listings"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="bg-orange-500 hover:bg-orange-600 text-white text-sm font-semibold px-5 py-2 rounded-lg transition-colors"
+                >
+                  View on Etsy →
+                </a>
+                <button
+                  onClick={() => { setStep(1); setNicheId(''); setProductTypeId(''); setContent(null); setEtsyListing(null); setEtsyPublished(null); setPdfUrl(''); }}
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-5 py-2 rounded-lg transition-colors"
+                >
+                  ✨ Generate Another Product
+                </button>
+              </div>
+            </Card>
+          ) : (
+            <div className="grid md:grid-cols-2 gap-6">
+              {/* Listing fields */}
+              <div className="space-y-4">
+                {etsyLoading ? (
+                  <div className="flex items-center gap-2 text-slate-500 py-8">
+                    <Spinner />
+                    <span className="text-sm">Generating SEO-optimized listing…</span>
+                  </div>
+                ) : etsyListing ? (
+                  <>
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                          Title <span className="font-normal text-slate-400">({etsyListing.title?.length}/140)</span>
+                        </label>
+                        <button onClick={() => copyText(etsyListing.title, 'title')}
+                          className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline">
+                          {copied === 'title' ? '✓ Copied' : 'Copy'}
+                        </button>
+                      </div>
+                      <textarea
+                        value={etsyListing.title}
+                        onChange={(e) => setEtsyListing({ ...etsyListing, title: e.target.value })}
+                        maxLength={140}
+                        rows={2}
+                        className="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm p-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      />
+                    </div>
+
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                          Tags <span className="font-normal text-slate-400">({etsyListing.tags?.length}/13)</span>
+                        </label>
+                        <button onClick={() => copyText(etsyListing.tags?.join(', '), 'tags')}
+                          className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline">
+                          {copied === 'tags' ? '✓ Copied' : 'Copy all'}
+                        </button>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {etsyListing.tags?.map((tag, i) => (
+                          <span key={i} className="text-xs bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 px-2 py-1 rounded-full">
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Description</label>
+                        <button onClick={() => copyText(etsyListing.description, 'desc')}
+                          className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline">
+                          {copied === 'desc' ? '✓ Copied' : 'Copy'}
+                        </button>
+                      </div>
+                      <textarea
+                        value={etsyListing.description}
+                        onChange={(e) => setEtsyListing({ ...etsyListing, description: e.target.value })}
+                        rows={8}
+                        className="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm p-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <button onClick={generateEtsyListing}
+                    className="text-sm text-indigo-600 dark:text-indigo-400 hover:underline">
+                    Regenerate listing
+                  </button>
+                )}
+              </div>
+
+              {/* Publish panel */}
+              <div>
+                <Card padding="md" className="mb-4">
+                  <p className="text-sm font-semibold mb-3">Publish Settings</p>
+                  <Input
+                    label="Price (USD)"
+                    type="number"
+                    min="0.20"
+                    step="0.50"
+                    value={etsyPrice}
+                    onChange={(e) => setEtsyPrice(e.target.value)}
+                  />
+                  <p className="text-xs text-slate-400 mt-1">Etsy recommends $3–$10 for digital downloads</p>
+                </Card>
+
+                {etsyConnected ? (
+                  <Button
+                    onClick={publishToEtsy}
+                    loading={etsyPublishing}
+                    disabled={!etsyListing || etsyLoading}
+                    size="lg"
+                    className="w-full mb-3 bg-orange-500 hover:bg-orange-600 focus:ring-orange-400"
+                  >
+                    {etsyPublishing ? 'Publishing...' : '🚀 Publish Draft to Etsy'}
+                  </Button>
+                ) : (
+                  <div className="space-y-3">
+                    <div className="p-3 bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded-lg text-amber-700 dark:text-amber-300 text-xs">
+                      <strong>Etsy not connected.</strong> <a href="/settings" className="underline">Connect in Settings</a> to auto-publish, or copy the listing details and create manually on Etsy.
+                    </div>
+                    <button
+                      onClick={() => copyText(`Title: ${etsyListing?.title}\n\nTags: ${etsyListing?.tags?.join(', ')}\n\nDescription:\n${etsyListing?.description}`, 'all')}
+                      className="w-full border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 text-sm font-medium py-2.5 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+                    >
+                      {copied === 'all' ? '✓ Copied!' : '📋 Copy All Listing Details'}
+                    </button>
+                  </div>
+                )}
+
+                <button
+                  onClick={() => { setStep(1); setNicheId(''); setProductTypeId(''); setContent(null); setEtsyListing(null); setEtsyPublished(null); setPdfUrl(''); }}
+                  className="w-full text-sm text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 mt-3 py-2 transition-colors"
+                >
+                  ✨ Generate Another Product
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -265,3 +518,4 @@ export default function GeneratePage() {
     </Suspense>
   );
 }
+

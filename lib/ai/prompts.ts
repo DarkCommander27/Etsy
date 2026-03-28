@@ -40,16 +40,35 @@ Include prompts, categories with lines for writing, and an affirmation message.
 Make it practical, compassionate, and actionable. No markdown, just raw JSON.`;
 }
 
+// SEO keyword banks per niche for stronger Etsy search ranking
+const NICHE_SEO_KEYWORDS: Record<string, string> = {
+  adhd: 'ADHD planner, ADHD printable, executive function, neurodivergent planner, ADHD tools, focus planner, dopamine, time management ADHD',
+  mdd: 'mental health journal, depression journal, mood tracker printable, self care planner, therapy worksheet, mental wellness, gratitude journal',
+  anxiety: 'anxiety relief printable, CBT worksheet, mental health printable, grounding exercise, anxiety journal, calm down kit, therapy tools',
+  social: 'social skills printable, conversation cards, social anxiety tools, boundary setting, communication printable, social script',
+  human: 'printable planner, productivity planner, life planner, goal setting worksheet, habit tracker, organization printable, daily planner',
+  techie: 'developer planner, software engineer printable, agile sprint planner, code review checklist, programmer gift, tech productivity',
+};
+
 export function getEtsyListingPrompt(nicheId: string, productTypeId: string, productName: string): string {
-  return `Create an Etsy listing for a printable digital product.
+  const nicheKeywords = NICHE_SEO_KEYWORDS[nicheId] || 'printable, digital download, worksheet';
+
+  return `Create a highly SEO-optimized Etsy listing for a printable digital download product.
+
 Product: ${productName}
 Niche: ${nicheId}
 Type: ${productTypeId}
+High-value niche keywords to incorporate: ${nicheKeywords}
 
-Return ONLY valid JSON (no markdown):
+SEO rules:
+- Title: exactly under 140 chars, front-load the most searched keywords, include "printable" and "digital download", natural language
+- Tags: EXACTLY 13 tags, each tag under 20 characters, use high-search-volume Etsy keywords, mix broad (e.g. "printable planner") and specific (e.g. "ADHD daily planner") terms
+- Description: 200-350 words. Opening sentence hooks with main keyword. Explain what it is, who it is for, exactly what is included, how to use it. Mention: instant digital download, PDF format, US Letter + A4 sizes included, print at home or at a print shop. Use natural keyword placement. End with a warm call to action.
+
+Return ONLY valid JSON (no markdown, no code blocks):
 {
-  "title": "Etsy title under 140 chars, keyword-rich, mention printable or digital download",
-  "tags": ["exactly 13 tags, each under 20 chars, highly searchable Etsy terms"],
-  "description": "150-300 word description. Include what it is, who it is for, what is included, how to use it, file format (PDF, US Letter and A4, instant download). Use line breaks for readability."
+  "title": "...",
+  "tags": ["tag1", "tag2", "tag3", "tag4", "tag5", "tag6", "tag7", "tag8", "tag9", "tag10", "tag11", "tag12", "tag13"],
+  "description": "..."
 }`;
 }

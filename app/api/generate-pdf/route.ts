@@ -14,7 +14,7 @@ export async function POST(req: NextRequest) {
       createdAt: new Date().toISOString(),
     });
     const safeTitle = (title || 'document').replace(/[^a-z0-9]/gi, '-');
-    return new NextResponse(pdfBytes, {
+    return new NextResponse(Buffer.from(pdfBytes), {
       headers: { 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename="${safeTitle}.pdf"` },
     });
   } catch (err) {

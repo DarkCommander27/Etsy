@@ -16,7 +16,7 @@ export function createAIClient(settings?: AISettings) {
   const config = PROVIDERS[provider];
 
   let apiKey: string;
-  let baseURL = config.baseURL;
+  let baseURL: string = config.baseURL;
 
   if (provider === 'gemini') {
     apiKey = settings?.geminiApiKey || process.env.GEMINI_API_KEY || '';
