@@ -55,6 +55,7 @@ export async function POST(req: NextRequest) {
       title: string;
       description: string;
       tags: string[];
+      taxonomyId?: number;
       price: number;
       shopId: string;
       apiKey?: string;
@@ -71,7 +72,7 @@ export async function POST(req: NextRequest) {
         createdAt: string;
       }>;
     };
-    const { title, description, tags, price, shopId, apiKey, idempotencyKey, pdfOptions, listingImages } = body;
+    const { title, description, tags, taxonomyId, price, shopId, apiKey, idempotencyKey, pdfOptions, listingImages } = body;
     const publishWarnings: string[] = [];
 
     if (idempotencyKey && idempotencyKey.trim().length >= 8) {
@@ -163,6 +164,7 @@ export async function POST(req: NextRequest) {
       title: listingData.title,
       description: listingData.description,
       tags: listingData.tags,
+      taxonomyId: Number.isInteger(taxonomyId) ? taxonomyId : undefined,
       price: parseFloat(String(price)) || 5.0,
     });
 

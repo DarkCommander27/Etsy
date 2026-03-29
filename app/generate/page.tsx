@@ -124,6 +124,8 @@ interface EtsyListing {
   title: string;
   tags: string[];
   description: string;
+  category?: string;
+  taxonomyId?: number;
 }
 
 interface ListingImageMeta {
@@ -497,6 +499,7 @@ function GenerateContent() {
           title: listingToPublish.title,
           description: listingToPublish.description,
           tags: listingToPublish.tags,
+          taxonomyId: listingToPublish.taxonomyId,
           price: parseFloat(etsyPrice) || 5.0,
           shopId: s.etsyShopId,
           apiKey: s.etsyApiKey,
@@ -522,6 +525,19 @@ function GenerateContent() {
     await navigator.clipboard.writeText(text);
     setCopied(key);
     setTimeout(() => setCopied(null), 2000);
+  }
+
+  function openEtsyNewListing() {
+    window.open('https://www.etsy.com/your/shops/me/tools/listings/create', '_blank', 'noopener,noreferrer');
+  }
+
+  function downloadGeneratedImages() {
+    for (const image of generatedImages) {
+      const a = document.createElement('a');
+      a.href = image.url;
+      a.download = image.filename || `listing-image-${image.rank}.png`;
+      a.click();
+    }
   }
 
   const steps = [
@@ -736,7 +752,7 @@ function GenerateContent() {
           <button onClick={() => setStep(4)} className="text-sm text-indigo-600 dark:text-indigo-400 hover:underline mb-4 flex items-center gap-1">← Back</button>
           <div className="mb-5">
             <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100">✅ Content generated! Review your product.</h2>
-            <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">This is what will be on your PDF. Download to run the full flow: PDF, 5 listing images, AI listing content, and Etsy draft creation.</p>
+            <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">This is what will be on your PDF. Download to generate the PDF, listing images, and Etsy listing copy. If Etsy API is connected, draft publishing runs automatically.</p>
           </div>
           {contentWarnings.length > 0 && (
             <div className="mb-4 p-3 bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded-lg">
@@ -822,7 +838,7 @@ function GenerateContent() {
                 )}
               </Card>
               <Button onClick={downloadPDF} loading={loading} size="lg" className="w-full mb-3">
-                {loading ? '⏳ Running automated flow...' : '⬇️ Download PDF + Auto Create Etsy Draft'}
+                {loading ? '⏳ Running export flow...' : '⬇️ Download PDF + Prepare Etsy Assets'}
               </Button>
               {automationStatus && (
                 <div className="mb-3 p-3 bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg">
@@ -867,6 +883,12 @@ function GenerateContent() {
                       />
                     ))}
                   </div>
+                  <button
+                    onClick={downloadGeneratedImages}
+                    className="mt-2 text-xs text-indigo-600 dark:text-indigo-400 hover:underline"
+                  >
+                    Download all listing images
+                  </button>
                 </div>
               )}
               {imageWarnings.length > 0 && (
@@ -881,7 +903,7 @@ function GenerateContent() {
               )}
               <div className="mt-3 p-3 bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded-lg mb-3">
                 <p className="text-xs text-amber-800 dark:text-amber-200 font-medium">Automation fallback</p>
-                <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">If auto-draft fails, open Step 6 to review fields and publish manually from inside the app.</p>
+                <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">If Etsy API is unavailable, open Step 6 for a manual upload checklist, copy-ready listing text, and direct Etsy links.</p>
               </div>
               <Button
                 onClick={() => setStep(6)}
@@ -907,7 +929,7 @@ function GenerateContent() {
           <div className="mb-5">
             <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100">🛍️ Create Your Etsy Listing</h2>
             <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">
-              AI has written your SEO-optimized title, tags, and description. Review them, set your price, then publish with one click.
+              AI has written your SEO-optimized title, tags, and description. Review everything, then publish via API or upload manually on Etsy.
             </p>
           </div>
 
@@ -1020,6 +1042,22 @@ function GenerateContent() {
 
                     <div>
                       <div className="flex items-center justify-between mb-1">
+                        <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Category</label>
+                        <button
+                          onClick={() => copyText(`${etsyListing.category || ''} (Taxonomy ID: ${etsyListing.taxonomyId || ''})`, 'category')}
+                          className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline"
+                        >
+                          {copied === 'category' ? '✓ Copied' : 'Copy'}
+                        </button>
+                      </div>
+                      <div className="rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-800 p-2.5 text-sm text-slate-700 dark:text-slate-300">
+                        <p>{etsyListing.category || 'Paper & Party Supplies > Paper > Calendars & Planners'}</p>
+                        <p className="text-xs text-slate-500 mt-1">Taxonomy ID: {etsyListing.taxonomyId || 2078}</p>
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
                         <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Description</label>
                         <button onClick={() => copyText(etsyListing.description, 'desc')}
                           className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline">
@@ -1071,14 +1109,30 @@ function GenerateContent() {
                 ) : (
                   <div className="space-y-3">
                     <div className="p-3 bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded-lg text-amber-700 dark:text-amber-300 text-xs">
-                      <strong>Etsy not connected.</strong> <a href="/settings" className="underline">Connect in Settings</a> to auto-publish, or copy the listing details and create manually on Etsy.
+                      <strong>Manual mode active.</strong> You can still publish today: open Etsy, create a new listing, upload the generated PDF and 5 images, then paste the title/tags/description below.
                     </div>
                     <button
-                      onClick={() => copyText(`Title: ${etsyListing?.title}\n\nTags: ${etsyListing?.tags?.join(', ')}\n\nDescription:\n${etsyListing?.description}`, 'all')}
+                      onClick={openEtsyNewListing}
+                      className="w-full bg-orange-500 hover:bg-orange-600 text-white text-sm font-semibold py-2.5 rounded-lg transition-colors"
+                    >
+                      Open Etsy New Listing
+                    </button>
+                    <button
+                      onClick={downloadGeneratedImages}
+                      disabled={generatedImages.length === 0}
+                      className="w-full border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 text-sm font-medium py-2.5 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Download 5 Listing Images
+                    </button>
+                    <button
+                      onClick={() => copyText(`Title: ${etsyListing?.title}\n\nCategory: ${etsyListing?.category || 'Paper & Party Supplies > Paper > Calendars & Planners'}\nTaxonomy ID: ${etsyListing?.taxonomyId || 2078}\n\nTags: ${etsyListing?.tags?.join(', ')}\n\nDescription:\n${etsyListing?.description}`, 'all')}
                       className="w-full border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 text-sm font-medium py-2.5 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
                     >
                       {copied === 'all' ? '✓ Copied!' : '📋 Copy All Listing Details'}
                     </button>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      Suggested category for your products: Calendars &amp; Planners.
+                    </p>
                   </div>
                 )}
 

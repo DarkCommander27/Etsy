@@ -101,11 +101,14 @@ SEO rules:
 - Title: exactly under 140 chars, front-load the most searched keywords, include "printable" and "digital download", natural language
 - Tags: EXACTLY 13 tags, each tag under 20 characters, use high-search-volume Etsy keywords, mix broad (e.g. "printable planner") and specific (e.g. "ADHD daily planner") terms
 - Description: 200-350 words. Opening sentence hooks with main keyword. Explain what it is, who it is for, exactly what is included, how to use it. Mention: instant digital download, PDF format, US Letter + A4 sizes included, print at home or at a print shop. Use natural keyword placement. End with a warm call to action.
+- Category: return a category_path and taxonomy_id suitable for Etsy digital printables.
 
 Return ONLY valid JSON (no markdown, no code blocks):
 {
   "title": "...",
   "tags": ["tag1", "tag2", "tag3", "tag4", "tag5", "tag6", "tag7", "tag8", "tag9", "tag10", "tag11", "tag12", "tag13"],
-  "description": "..."
+  "description": "...",
+  "category_path": "Paper & Party Supplies > Paper > Calendars & Planners",
+  "taxonomy_id": 2078
 }`;
 }

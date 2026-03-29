@@ -10,6 +10,8 @@ interface EtsyListing {
   title: string;
   tags: string[];
   description: string;
+  category?: string;
+  taxonomyId?: number;
 }
 
 export default function EtsyHelperPage() {
@@ -164,6 +166,23 @@ export default function EtsyHelperPage() {
             <p className="text-sm text-slate-900 dark:text-slate-100 bg-slate-50 dark:bg-slate-800 rounded p-3 whitespace-pre-line">
               {listing.description}
             </p>
+          </Card>
+
+          {/* Category */}
+          <Card padding="md">
+            <div className="flex items-start justify-between gap-3 mb-2">
+              <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300">Category</h3>
+              <button
+                onClick={() => copy(`${listing.category || 'Paper & Party Supplies > Paper > Calendars & Planners'} (Taxonomy ID: ${listing.taxonomyId || 2078})`, 'category')}
+                className="text-xs bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-300 px-2 py-1 rounded hover:bg-indigo-200 dark:hover:bg-indigo-800 transition-colors shrink-0"
+              >
+                {copied === 'category' ? '✓ Copied!' : 'Copy'}
+              </button>
+            </div>
+            <p className="text-sm text-slate-900 dark:text-slate-100 bg-slate-50 dark:bg-slate-800 rounded p-3">
+              {listing.category || 'Paper & Party Supplies > Paper > Calendars & Planners'}
+            </p>
+            <p className="text-xs text-slate-500 mt-1">Taxonomy ID: {listing.taxonomyId || 2078}</p>
           </Card>
         </div>
       )}
