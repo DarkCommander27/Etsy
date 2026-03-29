@@ -3,7 +3,7 @@ import { generateContent, AIProviderError, AISettings } from '@/lib/ai/client';
 import { getEtsyListingPrompt } from '@/lib/ai/prompts';
 import { parseGeneratedEtsyListing } from '@/lib/validation/generated';
 
-const MAX_LISTING_ATTEMPTS = 5;
+const MAX_LISTING_ATTEMPTS = 8;
 
 export async function POST(req: NextRequest) {
   try {

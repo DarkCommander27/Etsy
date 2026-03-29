@@ -76,7 +76,7 @@ const productContentSchema = z.object({
 const etsyListingSchema = z.object({
   title: shortText(140).min(10),
   tags: z.array(shortText(20)).min(1).max(13),
-  description: z.string().trim().min(120).max(4000),
+  description: z.string().trim().min(220).max(4000),
 });
 
 const hexColorSchema = z.string().regex(/^#[0-9a-fA-F]{6}$/).optional();
@@ -114,7 +114,7 @@ export type EtsyListingDraft = z.infer<typeof etsyListingSchema>;
 export type ListingImageRequest = z.infer<typeof listingImageRequestSchema>;
 export type ListingImageMeta = z.infer<typeof listingImageMetaSchema>;
 
-export const PRODUCT_QUALITY_MIN_SCORE = 82;
+export const PRODUCT_QUALITY_MIN_SCORE = 90;
 
 export interface ValidationResult<T> {
   success: boolean;
@@ -207,7 +207,7 @@ export function evaluateProductQuality(content: ProductContent): { score: number
   }
 
   if (!content.subtitle) {
-    score -= 8;
+    score -= 10;
     issues.push('Missing subtitle/context line.');
   }
 
@@ -226,18 +226,23 @@ export function evaluateProductQuality(content: ProductContent): { score: number
   if (content.sections?.length) {
     const shallow = content.sections.filter((s) => s.items.length < 3).length;
     if (shallow > 0) {
-      score -= Math.min(15, shallow * 4);
+      score -= Math.min(22, shallow * 6);
       issues.push('One or more sections are too shallow (fewer than 3 items).');
     }
   }
 
+  if (content.sections?.length && content.sections.length < 3) {
+    score -= 8;
+    issues.push('Generated worksheet has too few sections for a premium-quality printable.');
+  }
+
   if (content.time_blocks?.length && content.time_blocks.length < 6) {
-    score -= 10;
+    score -= 12;
     issues.push('Schedule block is too short to be practically useful.');
   }
 
   if (!content.instructions && !content.prompts?.length) {
-    score -= 12;
+    score -= 14;
     issues.push('Missing practical instructions or guided prompts.');
   }
 

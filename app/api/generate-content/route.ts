@@ -3,7 +3,7 @@ import { generateContent, AIProviderError, AISettings } from '@/lib/ai/client';
 import { getContentPrompt } from '@/lib/ai/prompts';
 import { evaluateProductQuality, parseGeneratedProductContent, PRODUCT_QUALITY_MIN_SCORE } from '@/lib/validation/generated';
 
-const MAX_GENERATION_ATTEMPTS = 5;
+const MAX_GENERATION_ATTEMPTS = 8;
 
 export async function POST(req: NextRequest) {
   try {
