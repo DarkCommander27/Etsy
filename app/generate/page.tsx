@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
+import Image from 'next/image';
 import { NICHES, getNicheById, NICHE_LIGHT_COLORS, NICHE_TEXT_COLORS } from '@/lib/niches';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -125,6 +126,77 @@ interface EtsyListing {
   description: string;
 }
 
+interface ListingImageMeta {
+  id: string;
+  rank: number;
+  filename: string;
+  url: string;
+  width: number;
+  height: number;
+  prompt: string;
+  createdAt: string;
+}
+
+interface ProductNameIdea {
+  title: string;
+  score: number;
+  reasons: string[];
+}
+
+const PRODUCT_QUALITY_MIN_SCORE = 82;
+
+function evaluateContentQuality(content: Record<string, unknown>): { score: number; issues: string[] } {
+  let score = 100;
+  const issues: string[] = [];
+
+  const title = String(content.title || '').trim();
+  const subtitle = String(content.subtitle || '').trim();
+  const sections = Array.isArray(content.sections) ? content.sections : [];
+  const categories = Array.isArray(content.categories) ? content.categories : [];
+  const timeBlocks = Array.isArray(content.time_blocks) ? content.time_blocks : [];
+  const steps = Array.isArray(content.steps) ? content.steps : [];
+  const columns = Array.isArray(content.columns) ? content.columns : [];
+  const prompts = Array.isArray(content.prompts) ? content.prompts : [];
+  const instructions = String(content.instructions || '').trim();
+  const closing = [content.affirmation, content.reminder, content.note, content.after_instruction].some(Boolean);
+
+  if (title.length < 8) {
+    score -= 12;
+    issues.push('Title is too short and likely low-conversion.');
+  }
+  if (!subtitle) {
+    score -= 8;
+    issues.push('Missing subtitle/context line.');
+  }
+  if (!sections.length && !categories.length && !timeBlocks.length && !steps.length && !columns.length) {
+    score -= 30;
+    issues.push('No substantial content blocks for a useful printable.');
+  }
+  if (sections.some((sec) => Array.isArray((sec as { items?: unknown[] }).items) && ((sec as { items?: unknown[] }).items?.length || 0) < 3)) {
+    score -= 10;
+    issues.push('One or more sections are too shallow (fewer than 3 items).');
+  }
+  if (timeBlocks.length > 0 && timeBlocks.length < 6) {
+    score -= 10;
+    issues.push('Schedule block is too short to be practically useful.');
+  }
+  if (!instructions && !prompts.length) {
+    score -= 12;
+    issues.push('Missing practical instructions or guided prompts.');
+  }
+  if (!closing) {
+    score -= 6;
+    issues.push('Missing closing note/affirmation.');
+  }
+
+  return { score: Math.max(0, Math.min(100, score)), issues };
+}
+
+function formatApiError(data: { error?: string; details?: string[] }, fallback: string): string {
+  const details = Array.isArray(data.details) ? data.details : [];
+  return [data.error || fallback, ...details].join(' ');
+}
+
 function GenerateContent() {
   const searchParams = useSearchParams();
   const [step, setStep] = useState(1);
@@ -138,21 +210,56 @@ function GenerateContent() {
   const [error, setError] = useState('');
   const [pdfUrl, setPdfUrl] = useState('');
   const [editableContent, setEditableContent] = useState('');
+  const [contentWarnings, setContentWarnings] = useState<string[]>([]);
+  const [qualityScore, setQualityScore] = useState<number | null>(null);
+  const [qualityIssues, setQualityIssues] = useState<string[]>([]);
+  const [generatedImages, setGeneratedImages] = useState<ListingImageMeta[]>([]);
+  const [imageWarnings, setImageWarnings] = useState<string[]>([]);
+  const [imageLoading, setImageLoading] = useState(false);
+  const [titleIdeas, setTitleIdeas] = useState<ProductNameIdea[]>([]);
+  const [titleIdeasLoading, setTitleIdeasLoading] = useState(false);
+  const [titleIdeasError, setTitleIdeasError] = useState('');
 
   // Step 6 — Etsy listing
   const [etsyListing, setEtsyListing] = useState<EtsyListing | null>(null);
+  const [listingWarnings, setListingWarnings] = useState<string[]>([]);
   const [etsyLoading, setEtsyLoading] = useState(false);
   const [etsyPrice, setEtsyPrice] = useState('5.00');
   const [etsyConnected, setEtsyConnected] = useState(false);
   const [etsyPublishing, setEtsyPublishing] = useState(false);
   const [etsyPublished, setEtsyPublished] = useState<{ listing_id: number; url?: string; warning?: string } | null>(null);
+  const [publishWarnings, setPublishWarnings] = useState<string[]>([]);
   const [etsyError, setEtsyError] = useState('');
+  const [automationStatus, setAutomationStatus] = useState('');
   const [copied, setCopied] = useState<string | null>(null);
   const [showRawJson, setShowRawJson] = useState(false);
 
   const niche = getNicheById(nicheId);
   const product = niche?.products.find((p) => p.id === productTypeId);
   const colorScheme = niche?.colorSchemes.find((c) => c.id === colorSchemeId) || niche?.colorSchemes[0];
+
+  function resetGeneratedState() {
+    setContent(null);
+    setEditableContent('');
+    setContentWarnings([]);
+    setQualityScore(null);
+    setQualityIssues([]);
+    setEtsyListing(null);
+    setListingWarnings([]);
+    setPublishWarnings([]);
+    setEtsyPublished(null);
+    setPdfUrl('');
+    setGeneratedImages([]);
+    setImageWarnings([]);
+    setImageLoading(false);
+    setTitleIdeas([]);
+    setTitleIdeasLoading(false);
+    setTitleIdeasError('');
+    setEtsyError('');
+    setAutomationStatus('');
+    setError('');
+    setShowRawJson(false);
+  }
 
   useEffect(() => {
     if (nicheId && searchParams.get('niche')) setStep(2);
@@ -176,6 +283,7 @@ function GenerateContent() {
   async function generateAIContent() {
     setLoading(true);
     setError('');
+    setContentWarnings([]);
     try {
       const res = await fetch('/api/generate-content', {
         method: 'POST',
@@ -183,9 +291,12 @@ function GenerateContent() {
         body: JSON.stringify({ nicheId, productTypeId, customTitle: title, settings: getSettings() }),
       });
       const data = await res.json();
-      if (data.error) throw new Error(data.error);
+      if (!res.ok || data.error) throw new Error(formatApiError(data, 'Failed to generate content'));
       setContent(data.content);
       setEditableContent(JSON.stringify(data.content, null, 2));
+      setContentWarnings(Array.isArray(data.warnings) ? data.warnings : []);
+      setQualityScore(Number.isFinite(Number(data.qualityScore)) ? Number(data.qualityScore) : null);
+      setQualityIssues(Array.isArray(data.qualityIssues) ? data.qualityIssues : []);
       setStep(5);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to generate content');
@@ -194,18 +305,49 @@ function GenerateContent() {
     }
   }
 
+  async function generateTitleIdeas() {
+    if (!nicheId || !productTypeId) return;
+    setTitleIdeasLoading(true);
+    setTitleIdeasError('');
+    try {
+      const res = await fetch('/api/generate-title-ideas', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nicheId, productTypeId, customTitle: title }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(formatApiError(data, 'Failed to generate product name ideas'));
+      setTitleIdeas(Array.isArray(data.ideas) ? data.ideas : []);
+    } catch (e) {
+      setTitleIdeas([]);
+      setTitleIdeasError(e instanceof Error ? e.message : 'Failed to generate product name ideas');
+    } finally {
+      setTitleIdeasLoading(false);
+    }
+  }
+
   async function downloadPDF() {
     setLoading(true);
     setError('');
     try {
       let finalContent = content;
-      try { finalContent = JSON.parse(editableContent); } catch { /* use original */ }
+      try {
+        finalContent = JSON.parse(editableContent);
+      } catch {
+        throw new Error('Edited JSON is invalid. Fix it or switch back to preview before generating the PDF.');
+      }
+      const quality = evaluateContentQuality(finalContent as Record<string, unknown>);
+      setQualityScore(quality.score);
+      setQualityIssues(quality.issues);
       const res = await fetch('/api/generate-pdf', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ nicheId, productTypeId, title: title || product?.name, colorScheme, pageSize, content: finalContent }),
       });
-      if (!res.ok) { const d = await res.json(); throw new Error(d.error); }
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(formatApiError(data, 'Failed to generate PDF'));
+      }
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       setPdfUrl(url);
@@ -213,16 +355,88 @@ function GenerateContent() {
       a.href = url;
       a.download = `${(title || product?.name || 'product').replace(/\s+/g, '-')}.pdf`;
       a.click();
+
+      setAutomationStatus('Generating 5 Etsy listing images...');
+      const images = await generateListingImages();
+
+      const settings = getSettings();
+      if (!etsyConnected || !settings.etsyApiKey || !settings.etsyShopId) {
+        setAutomationStatus('Auto draft skipped: connect Etsy in Settings to fully automate publishing.');
+        return;
+      }
+
+      if (quality.score < PRODUCT_QUALITY_MIN_SCORE) {
+        setAutomationStatus(`Auto draft skipped: quality score ${quality.score}/100 is below threshold (${PRODUCT_QUALITY_MIN_SCORE}/100). Improve content and retry.`);
+        return;
+      }
+
+      if (!images.length) {
+        setAutomationStatus('Auto draft skipped: listing images failed, you can continue manually.');
+        return;
+      }
+
+      setAutomationStatus('Generating Etsy SEO listing content...');
+      const listing = await generateEtsyListing();
+      if (!listing) {
+        setAutomationStatus('Auto draft skipped: Etsy listing generation failed, continue manually in Step 6.');
+        return;
+      }
+
+      setAutomationStatus('Creating Etsy draft with PDF and images...');
+      const published = await publishToEtsy({
+        listing,
+        finalContent,
+        images,
+      });
+      if (published) {
+        setAutomationStatus('Done: Etsy draft was created automatically. Review it on Etsy and publish when ready.');
+        setStep(6);
+      } else {
+        setAutomationStatus('Auto draft failed. You can retry in Step 6 without regenerating content.');
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to generate PDF');
+      setAutomationStatus('');
     } finally {
       setLoading(false);
     }
   }
 
-  async function generateEtsyListing() {
+  async function generateListingImages(): Promise<ListingImageMeta[]> {
+    setImageLoading(true);
+    setImageWarnings([]);
+    try {
+      const res = await fetch('/api/generate-images', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          nicheId,
+          productTypeId,
+          title: title || product?.name,
+          imageCount: 5,
+          colorScheme,
+          settings: getSettings(),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(formatApiError(data, 'Failed to generate listing images'));
+      const images = Array.isArray(data.images) ? data.images : [];
+      setGeneratedImages(images);
+      setImageWarnings(Array.isArray(data.warnings) ? data.warnings : []);
+      return images;
+    } catch (e) {
+      setImageWarnings([e instanceof Error ? e.message : 'Failed to generate listing images']);
+      setGeneratedImages([]);
+      return [];
+    } finally {
+      setImageLoading(false);
+    }
+  }
+
+  async function generateEtsyListing(): Promise<EtsyListing | null> {
     setEtsyLoading(true);
     setEtsyError('');
+    setListingWarnings([]);
     try {
       const res = await fetch('/api/generate-etsy', {
         method: 'POST',
@@ -230,42 +444,75 @@ function GenerateContent() {
         body: JSON.stringify({ nicheId, productTypeId, productName: title || product?.name, settings: getSettings() }),
       });
       const data = await res.json();
-      if (data.error) throw new Error(data.error);
+      if (!res.ok || data.error) throw new Error(formatApiError(data, 'Failed to generate Etsy listing'));
       setEtsyListing(data.listing);
+      setListingWarnings(Array.isArray(data.warnings) ? data.warnings : []);
+      return data.listing as EtsyListing;
     } catch (e) {
       setEtsyError(e instanceof Error ? e.message : 'Failed to generate Etsy listing');
+      return null;
     } finally {
       setEtsyLoading(false);
     }
   }
 
-  async function publishToEtsy() {
-    if (!etsyListing) return;
+  async function publishToEtsy(options?: {
+    listing?: EtsyListing;
+    finalContent?: Record<string, unknown> | null;
+    images?: ListingImageMeta[];
+  }): Promise<boolean> {
+    const listingToPublish = options?.listing || etsyListing;
+    if (!listingToPublish) return false;
     setEtsyPublishing(true);
     setEtsyError('');
+    setPublishWarnings([]);
     try {
       const s = getSettings();
-      let finalContent = content;
-      try { finalContent = JSON.parse(editableContent); } catch { /* use original */ }
+      let finalContent = options?.finalContent || content;
+      if (!options?.finalContent) {
+        try {
+          finalContent = JSON.parse(editableContent);
+        } catch {
+          throw new Error('Edited JSON is invalid. Fix it or switch back to preview before publishing.');
+        }
+      }
+      const images = options?.images || generatedImages;
+      const idempotencyKey = [
+        s.etsyShopId || 'shop',
+        nicheId || 'niche',
+        productTypeId || 'product',
+        title || product?.name || 'title',
+        listingToPublish.title,
+        String(parseFloat(etsyPrice) || 5.0),
+        images
+          .map((img) => `${img.id}:${img.rank}`)
+          .sort()
+          .join('|') || 'no-images',
+      ].join('::');
 
       const res = await fetch('/api/etsy/publish', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          title: etsyListing.title,
-          description: etsyListing.description,
-          tags: etsyListing.tags,
+          title: listingToPublish.title,
+          description: listingToPublish.description,
+          tags: listingToPublish.tags,
           price: parseFloat(etsyPrice) || 5.0,
           shopId: s.etsyShopId,
           apiKey: s.etsyApiKey,
+          idempotencyKey,
           pdfOptions: { pageSize, colorScheme, title: title || product?.name, nicheId, productTypeId, content: finalContent },
+          listingImages: images,
         }),
       });
       const data = await res.json();
-      if (data.error) throw new Error(data.error);
+      if (!res.ok || data.error) throw new Error(formatApiError(data, 'Failed to publish to Etsy'));
+      setPublishWarnings(Array.isArray(data.warnings) ? data.warnings : []);
       setEtsyPublished({ listing_id: data.listing?.listing_id, warning: data.warning });
+      return true;
     } catch (e) {
       setEtsyError(e instanceof Error ? e.message : 'Failed to publish to Etsy');
+      return false;
     } finally {
       setEtsyPublishing(false);
     }
@@ -325,7 +572,7 @@ function GenerateContent() {
           </div>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
             {NICHES.map((n) => (
-              <button key={n.id} onClick={() => { setNicheId(n.id); setProductTypeId(''); setColorSchemeId(''); setStep(2); }}
+              <button key={n.id} onClick={() => { resetGeneratedState(); setNicheId(n.id); setProductTypeId(''); setColorSchemeId(''); setStep(2); }}
                 className={`flex items-start gap-3 p-4 rounded-xl border-2 text-left transition-all hover:shadow-md hover:scale-[1.02] active:scale-100 ${NICHE_LIGHT_COLORS[n.color]}`}>
                 <span className="text-2xl">{n.icon}</span>
                 <div>
@@ -353,7 +600,7 @@ function GenerateContent() {
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             {niche.products.map((p) => (
-              <button key={p.id} onClick={() => { setProductTypeId(p.id); setTitle(p.name); setColorSchemeId(niche.colorSchemes[0].id); setStep(3); }}
+              <button key={p.id} onClick={() => { resetGeneratedState(); setProductTypeId(p.id); setTitle(p.name); setColorSchemeId(niche.colorSchemes[0].id); setStep(3); }}
                 className="flex flex-col items-start gap-2 p-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-left hover:border-indigo-400 hover:shadow-md hover:scale-[1.02] active:scale-100 transition-all">
                 <span className="text-2xl">{p.icon}</span>
                 <div>
@@ -377,6 +624,48 @@ function GenerateContent() {
           </div>
           <div className="space-y-5">
             <Input label="Title / Heading (optional — leave as-is for the product name)" value={title} onChange={(e) => setTitle(e.target.value)} placeholder={product.name} />
+            <div className="rounded-lg border border-slate-200 dark:border-slate-700 p-3 bg-slate-50 dark:bg-slate-900/40">
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">High-intent product name ideas</p>
+                <Button
+                  onClick={generateTitleIdeas}
+                  loading={titleIdeasLoading}
+                  size="sm"
+                  variant="secondary"
+                >
+                  {titleIdeasLoading ? 'Generating...' : 'Generate Ideas'}
+                </Button>
+              </div>
+              {titleIdeasError && (
+                <p className="text-xs text-red-600 dark:text-red-400 mb-2">{titleIdeasError}</p>
+              )}
+              {titleIdeas.length > 0 ? (
+                <div className="space-y-2">
+                  {titleIdeas.map((idea) => (
+                    <button
+                      key={idea.title}
+                      onClick={() => setTitle(idea.title)}
+                      className="w-full text-left rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-2.5 hover:border-indigo-400 transition-colors"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="text-sm font-medium text-slate-800 dark:text-slate-200">{idea.title}</p>
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 shrink-0">
+                          {idea.score}/100
+                        </span>
+                      </div>
+                      {idea.reasons[0] && (
+                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">{idea.reasons[0]}</p>
+                      )}
+                    </button>
+                  ))}
+                  <p className="text-xs text-slate-500 dark:text-slate-400">Tip: click any idea to apply it as your title.</p>
+                </div>
+              ) : (
+                !titleIdeasLoading && (
+                  <p className="text-xs text-slate-500 dark:text-slate-400">Generate SEO-focused title options tailored to this niche and product type.</p>
+                )
+              )}
+            </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Color Scheme</label>
               <div className="grid grid-cols-2 gap-2">
@@ -395,7 +684,7 @@ function GenerateContent() {
               </div>
             </div>
             <Select label="Page Size" value={pageSize} onChange={(e) => setPageSize(e.target.value)}>
-              <option value="letter">US Letter (8.5" × 11") — Best for US customers</option>
+              <option value="letter">US Letter (8.5&quot; × 11&quot;) — Best for US customers</option>
               <option value="a4">A4 (210mm × 297mm) — Best for international customers</option>
               <option value="a5">A5 (148mm × 210mm) — Compact / journal size</option>
             </Select>
@@ -447,8 +736,32 @@ function GenerateContent() {
           <button onClick={() => setStep(4)} className="text-sm text-indigo-600 dark:text-indigo-400 hover:underline mb-4 flex items-center gap-1">← Back</button>
           <div className="mb-5">
             <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100">✅ Content generated! Review your product.</h2>
-            <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">This is what will be on your PDF. Happy with it? Download the PDF, then continue to create your Etsy listing.</p>
+            <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">This is what will be on your PDF. Download to run the full flow: PDF, 5 listing images, AI listing content, and Etsy draft creation.</p>
           </div>
+          {contentWarnings.length > 0 && (
+            <div className="mb-4 p-3 bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded-lg">
+              <p className="text-sm font-medium text-amber-800 dark:text-amber-200 mb-1">Review these product quality warnings before exporting:</p>
+              <ul className="space-y-1 text-xs text-amber-700 dark:text-amber-300">
+                {contentWarnings.map((warning) => (
+                  <li key={warning}>• {warning}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {qualityScore !== null && (
+            <div className={`mb-4 p-3 border rounded-lg ${qualityScore >= PRODUCT_QUALITY_MIN_SCORE ? 'bg-emerald-50 dark:bg-emerald-950 border-emerald-200 dark:border-emerald-800' : 'bg-red-50 dark:bg-red-950 border-red-200 dark:border-red-800'}`}>
+              <p className={`text-sm font-medium mb-1 ${qualityScore >= PRODUCT_QUALITY_MIN_SCORE ? 'text-emerald-800 dark:text-emerald-200' : 'text-red-800 dark:text-red-200'}`}>
+                Quality score: {qualityScore}/100 (minimum for auto-publish: {PRODUCT_QUALITY_MIN_SCORE}/100)
+              </p>
+              {qualityIssues.length > 0 && (
+                <ul className={`space-y-1 text-xs ${qualityScore >= PRODUCT_QUALITY_MIN_SCORE ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-700 dark:text-red-300'}`}>
+                  {qualityIssues.map((issue) => (
+                    <li key={issue}>• {issue}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
           <div className="grid md:grid-cols-2 gap-6">
             {/* Content Preview */}
             <div>
@@ -509,8 +822,13 @@ function GenerateContent() {
                 )}
               </Card>
               <Button onClick={downloadPDF} loading={loading} size="lg" className="w-full mb-3">
-                {loading ? '⏳ Generating PDF...' : '⬇️ Download PDF'}
+                {loading ? '⏳ Running automated flow...' : '⬇️ Download PDF + Auto Create Etsy Draft'}
               </Button>
+              {automationStatus && (
+                <div className="mb-3 p-3 bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg">
+                  <p className="text-xs text-blue-700 dark:text-blue-300 font-medium">🤖 {automationStatus}</p>
+                </div>
+              )}
               {pdfUrl && (
                 <div className="mb-4 p-3 bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 rounded-lg">
                   <p className="text-xs text-green-700 dark:text-green-300 font-medium mb-1">✅ PDF downloaded!</p>
@@ -520,18 +838,63 @@ function GenerateContent() {
                   </a>
                 </div>
               )}
+              {imageLoading && (
+                <div className="mb-3 p-3 bg-indigo-50 dark:bg-indigo-950 border border-indigo-200 dark:border-indigo-800 rounded-lg">
+                  <p className="text-xs text-indigo-700 dark:text-indigo-300 font-medium">🎨 Generating your 5 Etsy listing images...</p>
+                </div>
+              )}
+              {generatedImages.length > 0 && (
+                <div className="mb-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">Generated listing images ({generatedImages.length}/5)</p>
+                    <button
+                      onClick={generateListingImages}
+                      className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline"
+                      disabled={imageLoading}
+                    >
+                      Regenerate
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    {generatedImages.map((image) => (
+                      <Image
+                        key={image.id}
+                        src={image.url}
+                        alt={`Listing image ${image.rank}`}
+                        width={image.width}
+                        height={image.height}
+                        className="w-full rounded-lg border border-slate-200 dark:border-slate-700 object-cover aspect-[3/2]"
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+              {imageWarnings.length > 0 && (
+                <div className="mb-3 p-3 bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded-lg">
+                  <p className="text-xs font-medium text-amber-800 dark:text-amber-200 mb-1">Image generation notes</p>
+                  <ul className="space-y-1 text-xs text-amber-700 dark:text-amber-300">
+                    {imageWarnings.map((warning) => (
+                      <li key={warning}>• {warning}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
               <div className="mt-3 p-3 bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded-lg mb-3">
-                <p className="text-xs text-amber-800 dark:text-amber-200 font-medium">Next: Create your Etsy listing</p>
-                <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">AI will write your SEO title, 13 tags, and description automatically.</p>
+                <p className="text-xs text-amber-800 dark:text-amber-200 font-medium">Automation fallback</p>
+                <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">If auto-draft fails, open Step 6 to review fields and publish manually from inside the app.</p>
               </div>
               <Button
                 onClick={() => setStep(6)}
                 variant="secondary"
                 size="lg"
                 className="w-full"
+                disabled={imageLoading || generatedImages.length === 0}
               >
-                Next: Create Etsy Listing →
+                Open Manual Etsy Editor →
               </Button>
+              {generatedImages.length === 0 && !imageLoading && (
+                <p className="text-xs text-slate-500 mt-2 text-center">Generate the 5 listing images before continuing.</p>
+              )}
             </div>
           </div>
         </div>
@@ -557,6 +920,28 @@ function GenerateContent() {
             </div>
           )}
 
+          {listingWarnings.length > 0 && !etsyPublished && (
+            <div className="mb-4 p-3 bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded-lg">
+              <p className="text-sm font-medium text-amber-800 dark:text-amber-200 mb-1">Listing quality warnings</p>
+              <ul className="space-y-1 text-xs text-amber-700 dark:text-amber-300">
+                {listingWarnings.map((warning) => (
+                  <li key={warning}>• {warning}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {publishWarnings.length > 0 && !etsyPublished && (
+            <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg">
+              <p className="text-sm font-medium text-blue-800 dark:text-blue-200 mb-1">Publish review notes</p>
+              <ul className="space-y-1 text-xs text-blue-700 dark:text-blue-300">
+                {publishWarnings.map((warning) => (
+                  <li key={warning}>• {warning}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
           {etsyPublished ? (
             <Card padding="lg" className="text-center">
               <p className="text-4xl mb-3">🎉</p>
@@ -577,7 +962,7 @@ function GenerateContent() {
                   View on Etsy →
                 </a>
                 <button
-                  onClick={() => { setStep(1); setNicheId(''); setProductTypeId(''); setContent(null); setEtsyListing(null); setEtsyPublished(null); setPdfUrl(''); }}
+                  onClick={() => { resetGeneratedState(); setStep(1); setNicheId(''); setProductTypeId(''); }}
                   className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-5 py-2 rounded-lg transition-colors"
                 >
                   ✨ Generate Another Product
@@ -661,6 +1046,7 @@ function GenerateContent() {
               <div>
                 <Card padding="md" className="mb-4">
                   <p className="text-sm font-semibold mb-3">Publish Settings</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">Images ready: {generatedImages.length}/5</p>
                   <Input
                     label="Price (USD)"
                     type="number"
@@ -674,9 +1060,9 @@ function GenerateContent() {
 
                 {etsyConnected ? (
                   <Button
-                    onClick={publishToEtsy}
+                    onClick={() => { void publishToEtsy(); }}
                     loading={etsyPublishing}
-                    disabled={!etsyListing || etsyLoading}
+                    disabled={!etsyListing || etsyLoading || generatedImages.length === 0}
                     size="lg"
                     className="w-full mb-3 bg-orange-500 hover:bg-orange-600 focus:ring-orange-400"
                   >
@@ -697,7 +1083,7 @@ function GenerateContent() {
                 )}
 
                 <button
-                  onClick={() => { setStep(1); setNicheId(''); setProductTypeId(''); setContent(null); setEtsyListing(null); setEtsyPublished(null); setPdfUrl(''); }}
+                  onClick={() => { resetGeneratedState(); setStep(1); setNicheId(''); setProductTypeId(''); }}
                   className="w-full text-sm text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 mt-3 py-2 transition-colors"
                 >
                   ✨ Generate Another Product

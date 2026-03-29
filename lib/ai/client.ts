@@ -1,6 +1,9 @@
 import OpenAI from 'openai';
 import { PROVIDERS, ProviderKey } from './providers';
 
+const AI_REQUEST_TIMEOUT_MS = 30_000;
+const AI_MAX_RETRIES = 2;
+
 export interface AISettings {
   provider: ProviderKey;
   geminiApiKey?: string;
@@ -8,6 +11,8 @@ export interface AISettings {
   ollamaUrl?: string;
   ollamaModel?: string;
 }
+
+export type GenerationMode = 'product' | 'listing';
 
 export function createAIClient(settings?: AISettings) {
   const provider = (settings?.provider ||
@@ -33,7 +38,7 @@ export function createAIClient(settings?: AISettings) {
       : config.model;
 
   return {
-    client: new OpenAI({ apiKey, baseURL }),
+    client: new OpenAI({ apiKey, baseURL, timeout: AI_REQUEST_TIMEOUT_MS, maxRetries: AI_MAX_RETRIES }),
     model,
     provider,
   };
@@ -41,9 +46,12 @@ export function createAIClient(settings?: AISettings) {
 
 export async function generateContent(
   prompt: string,
-  settings?: AISettings
+  settings?: AISettings,
+  mode: GenerationMode = 'product'
 ): Promise<string> {
   const { client, model } = createAIClient(settings);
+  const temperature = mode === 'listing' ? 0.3 : 0.4;
+  const maxTokens = mode === 'listing' ? 1400 : 2200;
 
   const response = await client.chat.completions.create({
     model,
@@ -55,8 +63,8 @@ export async function generateContent(
       },
       { role: 'user', content: prompt },
     ],
-    temperature: 0.7,
-    max_tokens: 2000,
+    temperature,
+    max_tokens: maxTokens,
   });
 
   return response.choices[0]?.message?.content || '';

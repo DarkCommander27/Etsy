@@ -13,6 +13,7 @@ interface Settings {
   provider: string;
   geminiApiKey: string;
   groqApiKey: string;
+  openaiApiKey: string;
   ollamaUrl: string;
   ollamaModel: string;
   defaultPageSize: string;
@@ -25,6 +26,7 @@ const defaults: Settings = {
   provider: 'gemini',
   geminiApiKey: '',
   groqApiKey: '',
+  openaiApiKey: '',
   ollamaUrl: 'http://localhost:11434',
   ollamaModel: 'llama3',
   defaultPageSize: 'letter',
@@ -78,8 +80,7 @@ function SettingsContent() {
   function connectEtsy() {
     // Save settings first so shop ID is persisted
     localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
-    const params = settings.etsyApiKey ? `?apiKey=${encodeURIComponent(settings.etsyApiKey)}` : '';
-    window.location.href = `/api/etsy/connect${params}`;
+    window.location.href = '/api/etsy/connect';
   }
 
   return (
@@ -132,6 +133,22 @@ function SettingsContent() {
               Free at{' '}
               <a href="https://console.groq.com" target="_blank" rel="noopener noreferrer" className="text-indigo-500 hover:underline">
                 console.groq.com
+              </a>
+            </p>
+          </div>
+
+          <div>
+            <Input
+              label="OpenAI API Key (for listing images)"
+              type="password"
+              value={settings.openaiApiKey}
+              onChange={(e) => set('openaiApiKey', e.target.value)}
+              placeholder="sk-..."
+            />
+            <p className="text-xs text-slate-400 mt-1">
+              Needed for automated Etsy listing image generation. Get one at{' '}
+              <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer" className="text-indigo-500 hover:underline">
+                platform.openai.com
               </a>
             </p>
           </div>

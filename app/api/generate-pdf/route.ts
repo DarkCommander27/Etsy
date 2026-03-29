@@ -1,12 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generatePDF, PDFOptions } from '@/lib/pdf/generator';
 import { addHistoryEntry } from '@/lib/db';
+import { validateProductContent } from '@/lib/validation/generated';
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const { nicheId, productTypeId, title, colorScheme, pageSize, content } = body;
-    const options: PDFOptions = { pageSize: pageSize || 'letter', colorScheme, title, nicheId, productTypeId, content };
+    const validated = validateProductContent(content);
+    if (!validated.success) {
+      return NextResponse.json({ error: validated.error, details: validated.issues }, { status: 422 });
+    }
+    if (!validated.data) {
+      return NextResponse.json({ error: 'Validated PDF content was unexpectedly empty.' }, { status: 500 });
+    }
+    const options: PDFOptions = {
+      pageSize: pageSize || 'letter',
+      colorScheme,
+      title,
+      nicheId,
+      productTypeId,
+      content: validated.data,
+    };
     const pdfBytes = await generatePDF(options);
     addHistoryEntry({
       id: Date.now().toString(), nicheId, productTypeId, title,

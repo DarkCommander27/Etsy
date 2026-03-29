@@ -46,3 +46,4 @@ __pycache__/
 # data / uploads
 /data/*.json
 /uploads/
+/public/generated/listing-images/
