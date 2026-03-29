@@ -197,6 +197,81 @@ function collectProductWarnings(content: ProductContent): string[] {
   return warnings;
 }
 
+function normalizeQualityText(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function getProductUsabilityIssues(content: ProductContent): string[] {
+  const issues: string[] = [];
+  const title = normalizeQualityText(content.title || '');
+  const subtitle = normalizeQualityText(content.subtitle || '');
+  const instructions = normalizeQualityText(content.instructions || '');
+
+  const genericNames = new Set(['section', 'section 1', 'section 2', 'stuff', 'notes', 'misc', 'other']);
+  const badPhrases = [
+    'high quality product',
+    'perfect for everyone',
+    'must have',
+    'best seller',
+    'lorem ipsum',
+    'blah blah',
+  ];
+
+  if (genericNames.has(title)) {
+    issues.push('Title is too generic to feel like a real product.');
+  }
+
+  if (subtitle && subtitle.length < 12) {
+    issues.push('Subtitle is too short to add meaningful context.');
+  }
+
+  if (instructions && instructions.length < 24) {
+    issues.push('Instructions are too short to guide a real buyer.');
+  }
+
+  const sectionNames = (content.sections || []).map((section) => normalizeQualityText(section.name));
+  if (sectionNames.some((name) => genericNames.has(name))) {
+    issues.push('One or more section names are too generic.');
+  }
+
+  const sectionDescriptions = (content.sections || []).map((section) => normalizeQualityText(section.description || ''));
+  if (content.sections?.length && sectionDescriptions.filter(Boolean).length === 0) {
+    issues.push('Structured sections need brief descriptions for clarity.');
+  }
+
+  const textUnits = [
+    ...(content.sections || []).flatMap((section) => section.items || []),
+    ...(content.prompts || []),
+    ...((content.steps || []).map((step) => step.instruction)),
+    ...((content.columns || []).map((column) => `${column.name} ${column.prompt}`)),
+  ].map((value) => normalizeQualityText(String(value || ''))).filter(Boolean);
+
+  const uniqueUnits = new Set(textUnits);
+  if (textUnits.length >= 6 && uniqueUnits.size / textUnits.length < 0.7) {
+    issues.push('Content is too repetitive and will feel low value to buyers.');
+  }
+
+  const actionableCount =
+    (content.sections || []).reduce((sum, section) => sum + section.items.length, 0) +
+    (content.prompts?.length || 0) +
+    (content.steps?.length || 0) +
+    (content.columns?.length || 0) +
+    (content.categories?.length || 0) +
+    (content.time_blocks?.length || 0);
+  if (actionableCount < 6) {
+    issues.push('Content does not include enough usable elements for a premium printable.');
+  }
+
+  const combinedText = [title, subtitle, instructions, ...textUnits].join(' ');
+  for (const phrase of badPhrases) {
+    if (combinedText.includes(phrase)) {
+      issues.push(`Content uses generic filler phrase: "${phrase}".`);
+    }
+  }
+
+  return [...new Set(issues)];
+}
+
 export function evaluateProductQuality(content: ProductContent): { score: number; issues: string[] } {
   let score = 100;
   const issues: string[] = [];
@@ -249,6 +324,12 @@ export function evaluateProductQuality(content: ProductContent): { score: number
   if (!content.affirmation && !content.reminder && !content.note && !content.after_instruction) {
     score -= 6;
     issues.push('Missing closing note/affirmation.');
+  }
+
+  const usabilityIssues = getProductUsabilityIssues(content);
+  if (usabilityIssues.length > 0) {
+    score -= Math.min(24, usabilityIssues.length * 6);
+    issues.push(...usabilityIssues);
   }
 
   return { score: Math.max(0, Math.min(100, score)), issues };

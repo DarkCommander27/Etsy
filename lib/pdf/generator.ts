@@ -27,7 +27,62 @@ function hexToRgb(hex: string): [number, number, number] {
 
 function safeText(text: unknown): string {
   if (typeof text !== 'string') return '';
-  return text.replace(/[^\x20-\x7E]/g, '').substring(0, 200);
+  return text.replace(/[^\x20-\x7E]/g, '').trim().substring(0, 400);
+}
+
+function wrapText(text: string, maxWidth: number, font: { widthOfTextAtSize: (text: string, size: number) => number }, size: number): string[] {
+  const words = text.split(/\s+/).filter(Boolean);
+  if (!words.length) return [];
+
+  const lines: string[] = [];
+  let current = words[0];
+
+  for (let i = 1; i < words.length; i += 1) {
+    const candidate = `${current} ${words[i]}`;
+    if (font.widthOfTextAtSize(candidate, size) <= maxWidth) {
+      current = candidate;
+    } else {
+      lines.push(current);
+      current = words[i];
+    }
+  }
+
+  lines.push(current);
+  return lines;
+}
+
+function drawWrappedText(args: {
+  page: any;
+  text: string;
+  x: number;
+  y: number;
+  maxWidth: number;
+  size: number;
+  minSize: number;
+  maxLines: number;
+  lineHeight: number;
+  font: any;
+  color: ReturnType<typeof rgb>;
+}): { linesUsed: number; finalY: number } {
+  const {
+    page, text, x, y, maxWidth, size, minSize, maxLines, lineHeight, font, color,
+  } = args;
+
+  let currentSize = size;
+  let lines = wrapText(text, maxWidth, font, currentSize);
+  while (currentSize > minSize && lines.length > maxLines) {
+    currentSize -= 1;
+    lines = wrapText(text, maxWidth, font, currentSize);
+  }
+
+  const finalLines = lines.slice(0, maxLines);
+  let currentY = y;
+  for (const line of finalLines) {
+    page.drawText(line, { x, y: currentY, size: currentSize, font, color });
+    currentY -= lineHeight;
+  }
+
+  return { linesUsed: finalLines.length, finalY: currentY };
 }
 
 export async function generatePDF(options: PDFOptions): Promise<Uint8Array> {
@@ -37,7 +92,6 @@ export async function generatePDF(options: PDFOptions): Promise<Uint8Array> {
   else if (options.pageSize === 'a5') { pageWidth = 419.53; pageHeight = 595.28; }
   else { pageWidth = 612; pageHeight = 792; }
 
-  const page = pdfDoc.addPage([pageWidth, pageHeight]);
   const bold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
   const regular = await pdfDoc.embedFont(StandardFonts.Helvetica);
 
@@ -47,46 +101,107 @@ export async function generatePDF(options: PDFOptions): Promise<Uint8Array> {
   const textColor = hexToRgb(options.colorScheme.text || '#111827');
   const accent = hexToRgb(options.colorScheme.accent || '#60A5FA');
 
-  page.drawRectangle({ x: 0, y: 0, width: pageWidth, height: pageHeight, color: rgb(...bg) });
-  page.drawRectangle({ x: 0, y: pageHeight - 75, width: pageWidth, height: 75, color: rgb(...primary) });
-
   const titleText = safeText(options.content?.title || options.title) || 'Untitled';
-  page.drawText(titleText.substring(0, 40), { x: 30, y: pageHeight - 45, size: 22, font: bold, color: rgb(1, 1, 1) });
-
   const subtitle = safeText(options.content?.subtitle);
-  if (subtitle) page.drawText(subtitle.substring(0, 60), { x: 30, y: pageHeight - 62, size: 9, font: regular, color: rgb(0.9, 0.9, 0.9) });
-
   const margin = 30;
   const contentWidth = pageWidth - margin * 2;
+  const footerY = 8;
+  const minBottomY = 50;
+  const pages: Array<ReturnType<PDFDocument['addPage']>> = [];
+
+  function addStyledPage() {
+    const page = pdfDoc.addPage([pageWidth, pageHeight]);
+    pages.push(page);
+    page.drawRectangle({ x: 0, y: 0, width: pageWidth, height: pageHeight, color: rgb(...bg) });
+    page.drawRectangle({ x: 0, y: pageHeight - 75, width: pageWidth, height: 75, color: rgb(...primary) });
+
+    const titleDraw = drawWrappedText({
+      page,
+      text: titleText,
+      x: 30,
+      y: pageHeight - 45,
+      maxWidth: pageWidth - 60,
+      size: 22,
+      minSize: 16,
+      maxLines: 1,
+      lineHeight: 24,
+      font: bold,
+      color: rgb(1, 1, 1),
+    });
+
+    if (subtitle) {
+      drawWrappedText({
+        page,
+        text: subtitle,
+        x: 30,
+        y: titleDraw.finalY - 1,
+        maxWidth: pageWidth - 60,
+        size: 9,
+        minSize: 8,
+        maxLines: 1,
+        lineHeight: 10,
+        font: regular,
+        color: rgb(0.9, 0.9, 0.9),
+      });
+    }
+
+    return page;
+  }
+
+  let page = addStyledPage();
   let y = pageHeight - 90;
+
+  function ensureSpace(requiredHeight: number) {
+    if (y - requiredHeight < minBottomY) {
+      page = addStyledPage();
+      y = pageHeight - 90;
+    }
+  }
 
   const content = options.content;
 
   if (content?.date_label) {
+    ensureSpace(24);
     page.drawText(safeText(content.date_label), { x: margin, y, size: 10, font: regular, color: rgb(...textColor) });
     page.drawLine({ start: { x: margin + 55, y: y - 1 }, end: { x: margin + 200, y: y - 1 }, thickness: 1, color: rgb(...primary) });
     y -= 22;
   }
 
   if (Array.isArray(content?.top_3_priorities)) {
+    const priorities = (content.top_3_priorities as string[]).slice(0, 5);
+    ensureSpace(36 + priorities.length * 26);
     y -= 4;
     page.drawRectangle({ x: margin, y: y - 4, width: contentWidth, height: 20, color: rgb(...secondary) });
     page.drawText('TOP 3 PRIORITIES', { x: margin + 5, y, size: 9, font: bold, color: rgb(...primary) });
     y -= 22;
-    (content.top_3_priorities as string[]).forEach((p, i) => {
+    priorities.forEach((p, i) => {
       page.drawRectangle({ x: margin, y: y - 2, width: 16, height: 16, borderColor: rgb(...primary), borderWidth: 1.5, color: rgb(...bg) });
-      page.drawText(safeText(`${i + 1}. ${p}`).substring(0, 55), { x: margin + 22, y: y + 1, size: 9, font: regular, color: rgb(...textColor) });
-      page.drawLine({ start: { x: margin + 22, y: y - 4 }, end: { x: margin + contentWidth, y: y - 4 }, thickness: 0.4, color: rgb(...accent) });
-      y -= 20;
+      const wrapped = drawWrappedText({
+        page,
+        text: safeText(`${i + 1}. ${p}`),
+        x: margin + 22,
+        y: y + 1,
+        maxWidth: contentWidth - 24,
+        size: 9,
+        minSize: 8,
+        maxLines: 2,
+        lineHeight: 10,
+        font: regular,
+        color: rgb(...textColor),
+      });
+      const lineY = y - Math.max(8, wrapped.linesUsed * 10 + 2);
+      page.drawLine({ start: { x: margin + 22, y: lineY }, end: { x: margin + contentWidth, y: lineY }, thickness: 0.4, color: rgb(...accent) });
+      y -= Math.max(20, wrapped.linesUsed * 12 + 8);
     });
     y -= 8;
   }
 
   if (Array.isArray(content?.time_blocks)) {
+    const blocks = (content.time_blocks as Array<{time: string; task: string}>).slice(0, 10);
+    ensureSpace(36 + blocks.length * 18);
     page.drawRectangle({ x: margin, y: y - 4, width: contentWidth, height: 20, color: rgb(...secondary) });
     page.drawText('SCHEDULE', { x: margin + 5, y, size: 9, font: bold, color: rgb(...primary) });
     y -= 22;
-    const blocks = (content.time_blocks as Array<{time: string; task: string}>).slice(0, 10);
     blocks.forEach((block, i) => {
       const rowBg = i % 2 === 0 ? rgb(...bg) : rgb(...secondary);
       page.drawRectangle({ x: margin, y: y - 14, width: contentWidth, height: 18, color: rowBg });
@@ -99,11 +214,23 @@ export async function generatePDF(options: PDFOptions): Promise<Uint8Array> {
 
   if (Array.isArray(content?.categories)) {
     (content.categories as Array<{name: string; icon: string; lines: number}>).forEach((cat) => {
-      if (y < 70) return;
+      const lines = Math.min(cat.lines || 4, 8);
+      ensureSpace(30 + lines * 16);
       page.drawRectangle({ x: margin, y: y - 4, width: contentWidth, height: 20, color: rgb(...secondary) });
-      page.drawText(safeText(`${cat.icon || ''} ${cat.name}`).substring(0, 40), { x: margin + 5, y, size: 9, font: bold, color: rgb(...primary) });
+      drawWrappedText({
+        page,
+        text: safeText(`${cat.icon || ''} ${cat.name}`),
+        x: margin + 5,
+        y,
+        maxWidth: contentWidth - 10,
+        size: 9,
+        minSize: 8,
+        maxLines: 1,
+        lineHeight: 10,
+        font: bold,
+        color: rgb(...primary),
+      });
       y -= 22;
-      const lines = Math.min(cat.lines || 4, Math.floor((y - 60) / 16));
       for (let i = 0; i < lines; i++) {
         page.drawLine({ start: { x: margin, y }, end: { x: margin + contentWidth, y }, thickness: 0.4, color: rgb(...accent) });
         y -= 16;
@@ -114,15 +241,39 @@ export async function generatePDF(options: PDFOptions): Promise<Uint8Array> {
 
   if (Array.isArray(content?.sections)) {
     (content.sections as Array<{name: string; description: string; items: string[]}>).forEach((sec) => {
-      if (y < 80) return;
+      const items = (sec.items || []).slice(0, 6);
+      ensureSpace(34 + items.length * 22);
       page.drawRectangle({ x: margin, y: y - 4, width: contentWidth, height: 20, color: rgb(...secondary) });
-      page.drawText(safeText(sec.name).substring(0, 45), { x: margin + 5, y, size: 9, font: bold, color: rgb(...primary) });
+      drawWrappedText({
+        page,
+        text: safeText(sec.name),
+        x: margin + 5,
+        y,
+        maxWidth: contentWidth - 10,
+        size: 9,
+        minSize: 8,
+        maxLines: 1,
+        lineHeight: 10,
+        font: bold,
+        color: rgb(...primary),
+      });
       y -= 22;
-      (sec.items || []).slice(0, 5).forEach((item) => {
-        if (y < 60) return;
+      items.forEach((item) => {
         page.drawRectangle({ x: margin + 5, y: y - 2, width: 7, height: 7, color: rgb(...accent) });
-        page.drawText(safeText(item).substring(0, 70), { x: margin + 17, y, size: 9, font: regular, color: rgb(...textColor) });
-        y -= 16;
+        const wrapped = drawWrappedText({
+          page,
+          text: safeText(item),
+          x: margin + 17,
+          y,
+          maxWidth: contentWidth - 20,
+          size: 9,
+          minSize: 8,
+          maxLines: 2,
+          lineHeight: 10,
+          font: regular,
+          color: rgb(...textColor),
+        });
+        y -= Math.max(16, wrapped.linesUsed * 11);
       });
       y -= 6;
     });
@@ -130,11 +281,35 @@ export async function generatePDF(options: PDFOptions): Promise<Uint8Array> {
 
   if (Array.isArray(content?.steps)) {
     (content.steps as Array<{number: number; sense: string; icon: string; instruction: string}>).forEach((step) => {
-      if (y < 90) return;
+      ensureSpace(72);
       page.drawCircle({ x: margin + 14, y: y - 8, size: 14, color: rgb(...primary) });
       page.drawText(String(step.number), { x: margin + 10, y: y - 13, size: 11, font: bold, color: rgb(1, 1, 1) });
-      page.drawText(safeText(`${step.icon || ''} ${step.sense}`).substring(0, 20), { x: margin + 33, y, size: 11, font: bold, color: rgb(...primary) });
-      page.drawText(safeText(step.instruction).substring(0, 60), { x: margin + 33, y: y - 14, size: 8, font: regular, color: rgb(...textColor) });
+      drawWrappedText({
+        page,
+        text: safeText(`${step.icon || ''} ${step.sense}`),
+        x: margin + 33,
+        y,
+        maxWidth: contentWidth - 35,
+        size: 11,
+        minSize: 9,
+        maxLines: 1,
+        lineHeight: 12,
+        font: bold,
+        color: rgb(...primary),
+      });
+      drawWrappedText({
+        page,
+        text: safeText(step.instruction),
+        x: margin + 33,
+        y: y - 14,
+        maxWidth: contentWidth - 35,
+        size: 8,
+        minSize: 8,
+        maxLines: 2,
+        lineHeight: 9,
+        font: regular,
+        color: rgb(...textColor),
+      });
       for (let i = 0; i < 3; i++) {
         page.drawLine({ start: { x: margin + 33, y: y - 22 - i * 14 }, end: { x: margin + contentWidth, y: y - 22 - i * 14 }, thickness: 0.4, color: rgb(...accent) });
       }
@@ -144,9 +319,21 @@ export async function generatePDF(options: PDFOptions): Promise<Uint8Array> {
 
   if (Array.isArray(content?.prompts)) {
     (content.prompts as string[]).forEach((prompt) => {
-      if (y < 80) return;
-      page.drawText(safeText(prompt).substring(0, 60), { x: margin, y, size: 9, font: bold, color: rgb(...textColor) });
-      y -= 14;
+      ensureSpace(66);
+      const wrapped = drawWrappedText({
+        page,
+        text: safeText(prompt),
+        x: margin,
+        y,
+        maxWidth: contentWidth,
+        size: 9,
+        minSize: 8,
+        maxLines: 2,
+        lineHeight: 10,
+        font: bold,
+        color: rgb(...textColor),
+      });
+      y = wrapped.finalY - 2;
       for (let i = 0; i < 3; i++) {
         page.drawLine({ start: { x: margin, y }, end: { x: margin + contentWidth, y }, thickness: 0.4, color: rgb(...accent) });
         y -= 15;
@@ -156,12 +343,25 @@ export async function generatePDF(options: PDFOptions): Promise<Uint8Array> {
   }
 
   if (Array.isArray(content?.columns)) {
-    const cols = content.columns as Array<{name: string; prompt: string}>;
+    const cols = (content.columns as Array<{name: string; prompt: string}>).slice(0, 4);
+    ensureSpace(300);
     const colW = (contentWidth - 8) / cols.length;
     cols.forEach((col, i) => {
       const x = margin + i * colW;
       page.drawRectangle({ x, y: y - 4, width: colW - 3, height: 20, color: rgb(...secondary) });
-      page.drawText(safeText(col.name).substring(0, 12), { x: x + 3, y, size: 7, font: bold, color: rgb(...primary) });
+      drawWrappedText({
+        page,
+        text: safeText(col.name),
+        x: x + 3,
+        y,
+        maxWidth: colW - 8,
+        size: 7,
+        minSize: 7,
+        maxLines: 1,
+        lineHeight: 8,
+        font: bold,
+        color: rgb(...primary),
+      });
     });
     y -= 22;
     for (let row = 0; row < 4; row++) {
@@ -180,12 +380,28 @@ export async function generatePDF(options: PDFOptions): Promise<Uint8Array> {
 
   const bottomText = safeText(
     (content?.affirmation || content?.reminder || content?.after_instruction || content?.note) as string
-  ).substring(0, 90);
-  if (bottomText && y > 50) {
+  );
+  if (bottomText) {
+    ensureSpace(42);
     page.drawRectangle({ x: margin, y: 18, width: contentWidth, height: 32, color: rgb(...secondary) });
-    page.drawText(bottomText, { x: margin + 8, y: 33, size: 8, font: regular, color: rgb(...textColor) });
+    drawWrappedText({
+      page,
+      text: bottomText,
+      x: margin + 8,
+      y: 33,
+      maxWidth: contentWidth - 16,
+      size: 8,
+      minSize: 8,
+      maxLines: 2,
+      lineHeight: 9,
+      font: regular,
+      color: rgb(...textColor),
+    });
   }
 
-  page.drawText('1', { x: pageWidth / 2 - 4, y: 8, size: 8, font: regular, color: rgb(...textColor) });
+  pages.forEach((p, index) => {
+    p.drawText(String(index + 1), { x: pageWidth / 2 - 4, y: footerY, size: 8, font: regular, color: rgb(...textColor) });
+  });
+
   return pdfDoc.save();
 }

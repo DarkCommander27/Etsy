@@ -34,6 +34,23 @@ describe('evaluateProductQuality', () => {
     expect(quality.score).toBeLessThan(PRODUCT_QUALITY_MIN_SCORE);
     expect(quality.issues.length).toBeGreaterThan(0);
   });
+
+  it('penalizes generic and repetitive printable content', () => {
+    const quality = evaluateProductQuality({
+      title: 'Section',
+      subtitle: 'Short',
+      instructions: 'Write stuff',
+      sections: [
+        { name: 'Stuff', items: ['Same item', 'Same item', 'Same item'] },
+        { name: 'Notes', items: ['Same item', 'Same item', 'Same item'] },
+      ],
+      affirmation: 'You can do it.',
+    });
+
+    expect(quality.score).toBeLessThan(PRODUCT_QUALITY_MIN_SCORE);
+    expect(quality.issues.some((issue) => issue.includes('generic'))).toBe(true);
+    expect(quality.issues.some((issue) => issue.includes('repetitive'))).toBe(true);
+  });
 });
 
 describe('validateEtsyListing', () => {

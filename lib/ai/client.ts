@@ -148,8 +148,8 @@ export async function generateContent(
 
   const systemContent =
     mode === 'product'
-      ? 'You are a helpful assistant that creates content for printable digital products sold on Etsy. Always return valid JSON when asked. Output should be practical and substantial, not minimal: include clear instructions, rich detail, and complete sections/items based on the requested schema.'
-      : 'You are a helpful assistant that creates Etsy listing copy. Always return valid JSON when asked. Avoid generic copy: use specific keywords, concrete product details, and complete fields with strong depth.';
+      ? 'You create printable digital product content for Etsy buyers. Always return valid JSON when asked. Content must be human-usable, not filler: practical, complete, and readable on a real printable. Include clear guidance, enough structure to justify purchase, specific section names, and concrete prompts/items. Avoid generic headings like "Section 1" or "Stuff", avoid repetition, avoid vague motivational fluff, and do not produce thin/minimal output. Assume a real customer paid for this and expects a polished worksheet they can use immediately.'
+      : 'You create Etsy listing copy for real buyers. Always return valid JSON when asked. Avoid generic copy: use specific keywords, concrete product details, and complete fields with strong depth. Do not use empty hype, filler, or repetitive keyword stuffing.';
 
   const modelCandidates =
     provider === 'gemini'
