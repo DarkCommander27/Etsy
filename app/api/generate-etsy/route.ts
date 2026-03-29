@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { generateContent, AISettings } from '@/lib/ai/client';
+import { generateContent, AIProviderError, AISettings } from '@/lib/ai/client';
 import { getEtsyListingPrompt } from '@/lib/ai/prompts';
 import { parseGeneratedEtsyListing } from '@/lib/validation/generated';
 
@@ -31,6 +31,16 @@ export async function POST(req: NextRequest) {
       { status: 422 }
     );
   } catch (err) {
+    if (err instanceof AIProviderError) {
+      return NextResponse.json(
+        {
+          error: err.message,
+          provider: err.provider,
+          model: err.model,
+        },
+        { status: err.status >= 400 && err.status < 600 ? err.status : 502 }
+      );
+    }
     const msg = err instanceof Error ? err.message : 'Unknown error';
     return NextResponse.json({ error: msg }, { status: 500 });
   }
