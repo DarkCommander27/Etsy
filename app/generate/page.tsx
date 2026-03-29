@@ -175,6 +175,8 @@ function evaluateContentQuality(content: Record<string, unknown>): { score: numb
   const columns = Array.isArray(content.columns) ? content.columns : [];
   const prompts = Array.isArray(content.prompts) ? content.prompts : [];
   const instructions = String(content.instructions || '').trim();
+  const afterInstruction = String(content.after_instruction || '').trim();
+  const afterDumpPrompt = String(content.after_dump_prompt || '').trim();
   const closing = [content.affirmation, content.reminder, content.note, content.after_instruction].some(Boolean);
 
   if (title.length < 8) {
@@ -197,7 +199,7 @@ function evaluateContentQuality(content: Record<string, unknown>): { score: numb
     score -= 10;
     issues.push('Schedule block is too short to be practically useful.');
   }
-  if (!instructions && !prompts.length) {
+  if (!instructions && !prompts.length && !steps.length && !columns.length && !afterInstruction && !afterDumpPrompt) {
     score -= 12;
     issues.push('Missing practical instructions or guided prompts.');
   }

@@ -5,6 +5,13 @@ import { evaluateProductQuality, parseGeneratedProductContent, PRODUCT_QUALITY_M
 
 const MAX_GENERATION_ATTEMPTS = 8;
 
+function buildQualityRetryPrompt(basePrompt: string, issues: string[], attempt: number): string {
+  if (!issues.length || attempt <= 1) return basePrompt;
+
+  const issueLines = issues.slice(0, 8).map((issue) => `- ${issue}`).join('\n');
+  return `${basePrompt}\n\nPrevious attempt quality gaps to fix now:\n${issueLines}\n\nRegenerate and fix every listed gap while preserving the same JSON shape and product intent.`;
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
@@ -27,7 +34,8 @@ export async function POST(req: NextRequest) {
     let lastError = 'Failed to generate quality content.';
 
     for (let attempt = 1; attempt <= MAX_GENERATION_ATTEMPTS; attempt += 1) {
-      const raw = await generateContent(prompt, settings, 'product');
+      const attemptPrompt = buildQualityRetryPrompt(prompt, lastIssues, attempt);
+      const raw = await generateContent(attemptPrompt, settings, 'product');
       const parsed = parseGeneratedProductContent(raw);
 
       if (!parsed.success || !parsed.data) {

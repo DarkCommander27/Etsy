@@ -83,6 +83,34 @@ describe('evaluateProductQuality', () => {
 
     expect(quality.issues).not.toContain('Missing practical instructions or guided prompts.');
   });
+
+  it('does not flag missing guidance when after_dump_prompt is present', () => {
+    const quality = evaluateProductQuality({
+      title: 'Brain Dump Reset',
+      subtitle: 'Empty your thoughts and pick one next action',
+      sections: [
+        {
+          name: 'Tasks & To-Dos',
+          description: 'Write every task currently in your head',
+          items: ['Client follow-up', 'Pay utility bill', 'Book dentist appointment'],
+        },
+        {
+          name: 'Worries',
+          description: 'List concerns without filtering',
+          items: ['Deadline pressure', 'Health admin', 'Family logistics'],
+        },
+        {
+          name: 'Ideas',
+          description: 'Capture sparks before they disappear',
+          items: ['Weekend project concept', 'Meal prep shortcut', 'Workspace tweak'],
+        },
+      ],
+      after_dump_prompt: 'Circle one item you can complete in 10 minutes and do it now.',
+      affirmation: 'Progress starts with one clear next action.',
+    });
+
+    expect(quality.issues).not.toContain('Missing practical instructions or guided prompts.');
+  });
 });
 
 describe('validateEtsyListing', () => {

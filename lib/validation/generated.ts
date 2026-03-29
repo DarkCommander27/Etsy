@@ -321,7 +321,8 @@ export function evaluateProductQuality(content: ProductContent): { score: number
     content.prompts?.length ||
     content.steps?.length ||
     content.columns?.length ||
-    content.after_instruction
+    content.after_instruction ||
+    content.after_dump_prompt
   );
   if (!hasGuidance) {
     score -= 14;
