@@ -51,6 +51,38 @@ describe('evaluateProductQuality', () => {
     expect(quality.issues.some((issue) => issue.includes('generic'))).toBe(true);
     expect(quality.issues.some((issue) => issue.includes('repetitive'))).toBe(true);
   });
+
+  it('does not flag missing guidance when actionable steps are present', () => {
+    const quality = evaluateProductQuality({
+      title: 'Morning Focus Routine',
+      subtitle: 'A 15-minute system to start work intentionally',
+      sections: [
+        {
+          name: 'Preparation',
+          description: 'Set your workspace and intention',
+          items: ['Clear desk', 'Open top priority task', 'Silence notifications'],
+        },
+        {
+          name: 'Execution',
+          description: 'Move directly into deep work',
+          items: ['Set timer for 15 minutes', 'Work only on one task', 'Mark progress at end'],
+        },
+        {
+          name: 'Reflection',
+          description: 'Capture what worked',
+          items: ['Note distraction triggers', 'Record one win', 'Choose first next action'],
+        },
+      ],
+      steps: [
+        { number: 1, sense: 'START', instruction: 'Pick one high-impact task before checking messages.' },
+        { number: 2, sense: 'FOCUS', instruction: 'Run one focused sprint with no app switching.' },
+        { number: 3, sense: 'RECAP', instruction: 'Write a one-line recap and next action.' },
+      ],
+      affirmation: 'Small starts build momentum.',
+    });
+
+    expect(quality.issues).not.toContain('Missing practical instructions or guided prompts.');
+  });
 });
 
 describe('validateEtsyListing', () => {

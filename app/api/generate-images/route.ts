@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
     }
 
     const result = await generateAndStoreListingImages(validated.data);
-    return NextResponse.json({ images: result.images, warnings: result.warnings });
+    return NextResponse.json({ images: result.images, warnings: result.warnings, provider: result.provider });
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Unknown error';
     return NextResponse.json({ error: msg }, { status: 500 });

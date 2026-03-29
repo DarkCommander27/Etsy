@@ -1,4 +1,22 @@
-export function getContentPrompt(nicheId: string, productTypeId: string, customTitle?: string): string {
+export type ContentQualityTemplateId = 'default' | 'best-quality';
+
+const BEST_QUALITY_TEMPLATE_INSTRUCTIONS = `
+Quality template: BEST_QUALITY
+- Keep output practical and buyer-usable, not motivational filler.
+- Preserve the exact JSON shape requested above. Do not add extra top-level keys.
+- Use specific, human-sounding labels (never generic names like "Section 1", "Stuff", or "Notes").
+- Ensure strong guidance by including clear instructions or guided prompts or actionable numbered steps.
+- If sections are present, provide at least 3 sections with at least 3 distinct items each.
+- Avoid repeated items or near-duplicate lines.
+- Include a meaningful closing line (affirmation/reminder/note/after_instruction) that helps the buyer use the worksheet.
+`;
+
+export function getContentPrompt(
+  nicheId: string,
+  productTypeId: string,
+  customTitle?: string,
+  qualityTemplateId: ContentQualityTemplateId = 'default'
+): string {
   const title = customTitle || productTypeId.replace(/-/g, ' ');
   const specific: Record<string, Record<string, string>> = {
     adhd: {
@@ -66,15 +84,23 @@ export function getContentPrompt(nicheId: string, productTypeId: string, customT
   };
 
   const nicheSpecific = specific[nicheId];
-  if (nicheSpecific && nicheSpecific[productTypeId]) {
-    return nicheSpecific[productTypeId];
-  }
+  let prompt = '';
 
-  return `Create content for a "${title}" printable worksheet for the "${nicheId}" niche.
+  if (nicheSpecific && nicheSpecific[productTypeId]) {
+    prompt = nicheSpecific[productTypeId];
+  } else {
+    prompt = `Create content for a "${title}" printable worksheet for the "${nicheId}" niche.
 Return ONLY valid JSON with: title, subtitle, and relevant sections array.
 Each section should have: name, description, and items (array of strings).
 Include an affirmation message at the end.
 Make it practical, evidence-based, compassionate, and actionable. No markdown, just raw JSON.`;
+  }
+
+  if (qualityTemplateId === 'best-quality') {
+    return `${prompt}\n${BEST_QUALITY_TEMPLATE_INSTRUCTIONS}`;
+  }
+
+  return prompt;
 }
 
 // SEO keyword banks per niche for stronger Etsy search ranking

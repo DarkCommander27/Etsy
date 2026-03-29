@@ -139,11 +139,26 @@ interface ListingImageMeta {
   createdAt: string;
 }
 
+type ImageProviderMode = 'openai' | 'local' | 'mixed';
+
 interface ProductNameIdea {
   title: string;
   score: number;
   reasons: string[];
 }
+
+const CONTENT_QUALITY_TEMPLATES = {
+  default: {
+    label: 'Standard',
+    description: 'Balanced prompt settings for fast generation.',
+  },
+  'best-quality': {
+    label: 'Best Quality',
+    description: 'Adds stricter structure and anti-filler rules to maximize usability score.',
+  },
+} as const;
+
+type ContentQualityTemplateId = keyof typeof CONTENT_QUALITY_TEMPLATES;
 
 const PRODUCT_QUALITY_MIN_SCORE = 82;
 
@@ -215,8 +230,10 @@ function GenerateContent() {
   const [contentWarnings, setContentWarnings] = useState<string[]>([]);
   const [qualityScore, setQualityScore] = useState<number | null>(null);
   const [qualityIssues, setQualityIssues] = useState<string[]>([]);
+  const [qualityTemplateId, setQualityTemplateId] = useState<ContentQualityTemplateId>('best-quality');
   const [generatedImages, setGeneratedImages] = useState<ListingImageMeta[]>([]);
   const [imageWarnings, setImageWarnings] = useState<string[]>([]);
+  const [imageProviderMode, setImageProviderMode] = useState<ImageProviderMode | null>(null);
   const [imageLoading, setImageLoading] = useState(false);
   const [titleIdeas, setTitleIdeas] = useState<ProductNameIdea[]>([]);
   const [titleIdeasLoading, setTitleIdeasLoading] = useState(false);
@@ -253,6 +270,7 @@ function GenerateContent() {
     setPdfUrl('');
     setGeneratedImages([]);
     setImageWarnings([]);
+    setImageProviderMode(null);
     setImageLoading(false);
     setTitleIdeas([]);
     setTitleIdeasLoading(false);
@@ -282,6 +300,11 @@ function GenerateContent() {
     catch { return {}; }
   }
 
+  function hasOpenAIImageKey(): boolean {
+    const settings = getSettings();
+    return Boolean(String(settings?.openaiApiKey || '').trim());
+  }
+
   async function generateAIContent() {
     setLoading(true);
     setError('');
@@ -290,7 +313,13 @@ function GenerateContent() {
       const res = await fetch('/api/generate-content', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nicheId, productTypeId, customTitle: title, settings: getSettings() }),
+        body: JSON.stringify({
+          nicheId,
+          productTypeId,
+          customTitle: title,
+          qualityTemplateId,
+          settings: getSettings(),
+        }),
       });
       const data = await res.json();
       if (!res.ok || data.error) throw new Error(formatApiError(data, 'Failed to generate content'));
@@ -425,10 +454,12 @@ function GenerateContent() {
       const images = Array.isArray(data.images) ? data.images : [];
       setGeneratedImages(images);
       setImageWarnings(Array.isArray(data.warnings) ? data.warnings : []);
+      setImageProviderMode(data.provider === 'openai' || data.provider === 'local' || data.provider === 'mixed' ? data.provider : null);
       return images;
     } catch (e) {
       setImageWarnings([e instanceof Error ? e.message : 'Failed to generate listing images']);
       setGeneratedImages([]);
+      setImageProviderMode(null);
       return [];
     } finally {
       setImageLoading(false);
@@ -732,6 +763,34 @@ function GenerateContent() {
               </div>
             </div>
           </Card>
+          <Card padding="md" className="mb-4 border border-emerald-200 dark:border-emerald-900 bg-emerald-50/60 dark:bg-emerald-950/30">
+            <div className="space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-emerald-900 dark:text-emerald-200">Content quality template</p>
+                  <p className="text-xs text-emerald-700 dark:text-emerald-300">Use Best Quality to bias the model toward deeper, more practical worksheets.</p>
+                </div>
+                <select
+                  value={qualityTemplateId}
+                  onChange={(e) => setQualityTemplateId(e.target.value as ContentQualityTemplateId)}
+                  className="rounded-md border border-emerald-300 dark:border-emerald-700 bg-white dark:bg-slate-900 px-2 py-1 text-xs font-medium text-emerald-900 dark:text-emerald-200"
+                >
+                  <option value="best-quality">Best Quality</option>
+                  <option value="default">Standard</option>
+                </select>
+              </div>
+              <p className="text-xs text-emerald-700 dark:text-emerald-300">
+                {CONTENT_QUALITY_TEMPLATES[qualityTemplateId].description}
+              </p>
+              {qualityTemplateId === 'best-quality' && (
+                <ul className="text-xs text-emerald-800 dark:text-emerald-200 space-y-1 list-disc list-inside">
+                  <li>Requires clear instructions, prompts, or steps</li>
+                  <li>Avoids generic labels and repeated lines</li>
+                  <li>Pushes for richer, buyer-usable structure</li>
+                </ul>
+              )}
+            </div>
+          </Card>
           <Button onClick={generateAIContent} loading={loading} size="lg" className="w-full">
             {loading ? '✨ Generating your content...' : '✨ Generate Content with AI'}
           </Button>
@@ -840,6 +899,16 @@ function GenerateContent() {
               <Button onClick={downloadPDF} loading={loading} size="lg" className="w-full mb-3">
                 {loading ? '⏳ Running export flow...' : '⬇️ Download PDF + Prepare Etsy Assets'}
               </Button>
+              {!hasOpenAIImageKey() && (
+                <div className="mb-3 p-3 bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded-lg">
+                  <p className="text-xs text-amber-700 dark:text-amber-300 font-medium">
+                    OpenAI image key not detected in Settings. Listing images will use local fallback mockups.
+                    {' '}
+                    <a href="/settings" className="underline">Add OpenAI key</a>
+                    {' '}for full AI-generated listing images.
+                  </p>
+                </div>
+              )}
               {automationStatus && (
                 <div className="mb-3 p-3 bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg">
                   <p className="text-xs text-blue-700 dark:text-blue-300 font-medium">🤖 {automationStatus}</p>
@@ -863,6 +932,11 @@ function GenerateContent() {
                 <div className="mb-4">
                   <div className="flex items-center justify-between mb-2">
                     <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">Generated listing images ({generatedImages.length}/5)</p>
+                    {imageProviderMode && (
+                      <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${imageProviderMode === 'openai' ? 'bg-emerald-100 dark:bg-emerald-900 text-emerald-700 dark:text-emerald-300' : imageProviderMode === 'mixed' ? 'bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300' : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'}`}>
+                        {imageProviderMode === 'openai' ? 'OpenAI images' : imageProviderMode === 'mixed' ? 'Mixed: OpenAI + fallback' : 'Local fallback images'}
+                      </span>
+                    )}
                     <button
                       onClick={generateListingImages}
                       className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline"

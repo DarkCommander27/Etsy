@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateContent, AIProviderError, AISettings } from '@/lib/ai/client';
-import { getContentPrompt } from '@/lib/ai/prompts';
+import { ContentQualityTemplateId, getContentPrompt } from '@/lib/ai/prompts';
 import { evaluateProductQuality, parseGeneratedProductContent, PRODUCT_QUALITY_MIN_SCORE } from '@/lib/validation/generated';
 
 const MAX_GENERATION_ATTEMPTS = 8;
@@ -8,10 +8,15 @@ const MAX_GENERATION_ATTEMPTS = 8;
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { nicheId, productTypeId, customTitle, settings } = body as {
-      nicheId: string; productTypeId: string; customTitle?: string; settings?: AISettings;
+    const { nicheId, productTypeId, customTitle, settings, qualityTemplateId } = body as {
+      nicheId: string;
+      productTypeId: string;
+      customTitle?: string;
+      settings?: AISettings;
+      qualityTemplateId?: ContentQualityTemplateId;
     };
-    const prompt = getContentPrompt(nicheId, productTypeId, customTitle);
+    const template = qualityTemplateId === 'best-quality' ? 'best-quality' : 'default';
+    const prompt = getContentPrompt(nicheId, productTypeId, customTitle, template);
     let bestCandidate: {
       content: Record<string, unknown>;
       warnings: string[];

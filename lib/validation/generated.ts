@@ -316,7 +316,14 @@ export function evaluateProductQuality(content: ProductContent): { score: number
     issues.push('Schedule block is too short to be practically useful.');
   }
 
-  if (!content.instructions && !content.prompts?.length) {
+  const hasGuidance = Boolean(
+    content.instructions ||
+    content.prompts?.length ||
+    content.steps?.length ||
+    content.columns?.length ||
+    content.after_instruction
+  );
+  if (!hasGuidance) {
     score -= 14;
     issues.push('Missing practical instructions or guided prompts.');
   }

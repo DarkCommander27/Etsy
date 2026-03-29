@@ -170,7 +170,7 @@ function generateLocalMockupPng(request: ListingImageRequest, rank: number): Buf
 	return canvas.toBuffer('image/png');
 }
 
-export async function generateAndStoreListingImages(request: ListingImageRequest): Promise<{ images: ListingImageMeta[]; warnings: string[] }> {
+export async function generateAndStoreListingImages(request: ListingImageRequest): Promise<{ images: ListingImageMeta[]; warnings: string[]; provider: 'openai' | 'local' | 'mixed' }> {
 	ensureGeneratedDir();
 	try {
 		pruneGeneratedImages();
@@ -190,6 +190,8 @@ export async function generateAndStoreListingImages(request: ListingImageRequest
 	const batchId = `${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
 	const baseSlug = slugify(request.title || 'listing-image');
 	const images: ListingImageMeta[] = [];
+	let openaiGeneratedCount = 0;
+	let localGeneratedCount = 0;
 
 	for (let index = 0; index < count; index += 1) {
 		const rank = index + 1;
@@ -199,16 +201,26 @@ export async function generateAndStoreListingImages(request: ListingImageRequest
 
 		try {
 			let png: Buffer;
+			let usedLocal = false;
 			if (useLocalFallbackOnly) {
 				png = generateLocalMockupPng(request, rank);
+				usedLocal = true;
 			} else {
 				try {
 					png = await generateImagePng(prompt, apiKey);
 				} catch (err) {
 					warnings.push(`Image ${rank} fell back to local mockup: ${err instanceof Error ? err.message : 'Unknown error'}`);
 					png = generateLocalMockupPng(request, rank);
+					usedLocal = true;
 				}
 			}
+
+			if (usedLocal) {
+				localGeneratedCount += 1;
+			} else {
+				openaiGeneratedCount += 1;
+			}
+
 			fs.writeFileSync(filePath, png);
 			images.push({
 				id: `${batchId}-${rank}`,
@@ -229,5 +241,12 @@ export async function generateAndStoreListingImages(request: ListingImageRequest
 		throw new Error('All listing image generations failed.');
 	}
 
-	return { images, warnings };
+	const provider =
+		openaiGeneratedCount > 0 && localGeneratedCount > 0
+			? 'mixed'
+			: openaiGeneratedCount > 0
+				? 'openai'
+				: 'local';
+
+	return { images, warnings, provider };
 }
