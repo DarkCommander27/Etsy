@@ -12,6 +12,7 @@ const STORAGE_KEY = 'etsygen-settings';
 interface Settings {
   provider: string;
   geminiApiKey: string;
+  geminiModel: string;
   groqApiKey: string;
   openaiApiKey: string;
   ollamaUrl: string;
@@ -25,6 +26,7 @@ interface Settings {
 const defaults: Settings = {
   provider: 'gemini',
   geminiApiKey: '',
+  geminiModel: 'gemini-2.0-flash',
   groqApiKey: '',
   openaiApiKey: '',
   ollamaUrl: 'http://localhost:11434',
@@ -120,6 +122,13 @@ function SettingsContent() {
               </a>
             </p>
           </div>
+
+          <Input
+            label="Gemini Model"
+            value={settings.geminiModel}
+            onChange={(e) => set('geminiModel', e.target.value)}
+            placeholder="gemini-2.0-flash"
+          />
 
           <div>
             <Input

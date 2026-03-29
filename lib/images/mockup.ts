@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import OpenAI from 'openai';
+import { createCanvas } from '@napi-rs/canvas';
 import { getNicheById, getProductById } from '@/lib/niches';
 import { ListingImageMeta, ListingImageRequest } from '@/lib/validation/generated';
 
@@ -99,6 +100,76 @@ async function generateImagePng(prompt: string, apiKey: string): Promise<Buffer>
 	return Buffer.from(b64, 'base64');
 }
 
+function wrapText(text: string, maxCharsPerLine: number): string[] {
+	const words = text.split(/\s+/).filter(Boolean);
+	const lines: string[] = [];
+	let current = '';
+
+	for (const word of words) {
+		const next = current ? `${current} ${word}` : word;
+		if (next.length > maxCharsPerLine) {
+			if (current) lines.push(current);
+			current = word;
+		} else {
+			current = next;
+		}
+	}
+	if (current) lines.push(current);
+	return lines;
+}
+
+function generateLocalMockupPng(request: ListingImageRequest, rank: number): Buffer {
+	const width = 1536;
+	const height = 1024;
+	const canvas = createCanvas(width, height);
+	const ctx = canvas.getContext('2d');
+
+	const bg = request.colorScheme?.background || '#0f172a';
+	const primary = request.colorScheme?.primary || '#312e81';
+	const secondary = request.colorScheme?.secondary || '#1e293b';
+	const accent = request.colorScheme?.accent || '#a78bfa';
+
+	const gradient = ctx.createLinearGradient(0, 0, width, height);
+	gradient.addColorStop(0, bg);
+	gradient.addColorStop(1, secondary);
+	ctx.fillStyle = gradient;
+	ctx.fillRect(0, 0, width, height);
+
+	ctx.globalAlpha = 0.16;
+	ctx.fillStyle = primary;
+	ctx.fillRect(80, 70, width - 160, height - 140);
+	ctx.globalAlpha = 1;
+
+	ctx.fillStyle = '#ffffff';
+	ctx.fillRect(170, 130, width - 340, height - 260);
+
+	ctx.fillStyle = accent;
+	ctx.fillRect(170, 130, width - 340, 72);
+
+	ctx.fillStyle = '#f8fafc';
+	ctx.font = 'bold 34px sans-serif';
+	ctx.fillText('INSTANT DIGITAL DOWNLOAD', 210, 178);
+
+	const title = request.title || 'Printable Worksheet';
+	const lines = wrapText(title, 34).slice(0, 3);
+	ctx.fillStyle = '#0f172a';
+	ctx.font = 'bold 68px sans-serif';
+	lines.forEach((line, idx) => {
+		ctx.fillText(line, 230, 330 + idx * 88);
+	});
+
+	ctx.font = '28px sans-serif';
+	ctx.fillStyle = '#334155';
+	ctx.fillText(`Variation ${rank} • Ready to Print • PDF`, 230, 690);
+
+	ctx.fillStyle = accent;
+	ctx.fillRect(230, 740, 420, 14);
+	ctx.fillStyle = primary;
+	ctx.fillRect(230, 780, 320, 14);
+
+	return canvas.toBuffer('image/png');
+}
+
 export async function generateAndStoreListingImages(request: ListingImageRequest): Promise<{ images: ListingImageMeta[]; warnings: string[] }> {
 	ensureGeneratedDir();
 	try {
@@ -108,8 +179,10 @@ export async function generateAndStoreListingImages(request: ListingImageRequest
 	}
 
 	const apiKey = request.settings?.openaiApiKey || process.env.OPENAI_API_KEY || '';
-	if (!apiKey) {
-		throw new Error('OpenAI image API key missing. Add OPENAI_API_KEY in .env.local or set it in Settings.');
+	const useLocalFallbackOnly = !apiKey;
+	const warnings: string[] = [];
+	if (useLocalFallbackOnly) {
+		warnings.push('OpenAI image key not found; using built-in local mockups instead.');
 	}
 
 	const count = Math.min(request.imageCount || 5, 5);
@@ -117,7 +190,6 @@ export async function generateAndStoreListingImages(request: ListingImageRequest
 	const batchId = `${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
 	const baseSlug = slugify(request.title || 'listing-image');
 	const images: ListingImageMeta[] = [];
-	const warnings: string[] = [];
 
 	for (let index = 0; index < count; index += 1) {
 		const rank = index + 1;
@@ -126,7 +198,17 @@ export async function generateAndStoreListingImages(request: ListingImageRequest
 		const filePath = path.join(GENERATED_DIR, filename);
 
 		try {
-			const png = await generateImagePng(prompt, apiKey);
+			let png: Buffer;
+			if (useLocalFallbackOnly) {
+				png = generateLocalMockupPng(request, rank);
+			} else {
+				try {
+					png = await generateImagePng(prompt, apiKey);
+				} catch (err) {
+					warnings.push(`Image ${rank} fell back to local mockup: ${err instanceof Error ? err.message : 'Unknown error'}`);
+					png = generateLocalMockupPng(request, rank);
+				}
+			}
 			fs.writeFileSync(filePath, png);
 			images.push({
 				id: `${batchId}-${rank}`,

@@ -7,6 +7,7 @@ const AI_MAX_RETRIES = 2;
 export interface AISettings {
   provider?: string;
   geminiApiKey?: string;
+  geminiModel?: string;
   groqApiKey?: string;
   ollamaUrl?: string;
   ollamaModel?: string;
@@ -58,7 +59,9 @@ function getProviderConfig(settings?: AISettings) {
   const model =
     provider === 'ollama'
       ? settings?.ollamaModel || config.model
-      : config.model;
+      : provider === 'gemini'
+        ? settings?.geminiModel || process.env.GEMINI_MODEL || config.model
+        : config.model;
 
   return {
     provider,
@@ -91,6 +94,29 @@ function formatProviderError(
   return new AIProviderError(normalizedMessage, status, provider, model);
 }
 
+function isGeminiRetryableModelError(err: unknown): boolean {
+  const status =
+    typeof err === 'object' && err !== null && 'status' in err && typeof (err as { status?: unknown }).status === 'number'
+      ? (err as { status: number }).status
+      : 0;
+  const message =
+    typeof err === 'object' && err !== null && 'message' in err && typeof (err as { message?: unknown }).message === 'string'
+      ? (err as { message: string }).message.toLowerCase()
+      : '';
+
+  if (![400, 404, 429, 503].includes(status)) return false;
+
+  return [
+    'no body',
+    'model',
+    'not found',
+    'unsupported',
+    'quota',
+    'permission',
+    'access',
+  ].some((needle) => message.includes(needle));
+}
+
 export function createAIClient(settings?: AISettings) {
   const { provider, model, apiKey, baseURL } = getProviderConfig(settings);
 
@@ -120,23 +146,47 @@ export async function generateContent(
   const temperature = mode === 'listing' ? 0.3 : 0.4;
   const maxTokens = mode === 'listing' ? 1400 : 2200;
 
-  try {
-    const response = await client.chat.completions.create({
-      model,
-      messages: [
-        {
-          role: 'system',
-          content:
-            'You are a helpful assistant that creates content for printable digital products sold on Etsy. Always return valid JSON when asked.',
-        },
-        { role: 'user', content: prompt },
-      ],
-      temperature,
-      max_tokens: maxTokens,
-    });
+  const systemContent =
+    mode === 'product'
+      ? 'You are a helpful assistant that creates content for printable digital products sold on Etsy. Always return valid JSON when asked. Output should be practical and substantial, not minimal: include clear instructions, rich detail, and complete sections/items based on the requested schema.'
+      : 'You are a helpful assistant that creates Etsy listing copy. Always return valid JSON when asked. Avoid generic copy: use specific keywords, concrete product details, and complete fields with strong depth.';
 
-    return response.choices[0]?.message?.content || '';
-  } catch (err) {
-    throw formatProviderError(err, provider, model);
+  const modelCandidates =
+    provider === 'gemini'
+      ? Array.from(new Set([model, 'gemini-1.5-flash']))
+      : [model];
+
+  let lastErr: unknown;
+
+  for (let i = 0; i < modelCandidates.length; i += 1) {
+    const candidateModel = modelCandidates[i];
+    try {
+      const response = await client.chat.completions.create({
+        model: candidateModel,
+        messages: [
+          {
+            role: 'system',
+            content: systemContent,
+          },
+          { role: 'user', content: prompt },
+        ],
+        temperature,
+        max_tokens: maxTokens,
+      });
+
+      return response.choices[0]?.message?.content || '';
+    } catch (err) {
+      lastErr = err;
+      const canRetryWithNextModel =
+        provider === 'gemini' &&
+        i < modelCandidates.length - 1 &&
+        isGeminiRetryableModelError(err);
+
+      if (!canRetryWithNextModel) {
+        throw formatProviderError(err, provider, candidateModel);
+      }
+    }
   }
+
+  throw formatProviderError(lastErr, provider, modelCandidates[modelCandidates.length - 1]);
 }
