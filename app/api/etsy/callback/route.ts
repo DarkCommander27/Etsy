@@ -1,6 +1,43 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPKCE, saveTokens, EtsyTokens } from '@/lib/etsy/client';
 
+const ETSY_TIMEOUT_MS = 20_000;
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isTransient(status: number): boolean {
+  return status === 408 || status === 429 || (status >= 500 && status <= 599);
+}
+
+async function exchangeTokenWithRetry(url: string, body: URLSearchParams): Promise<Response> {
+  const retries = 2;
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), ETSY_TIMEOUT_MS);
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body,
+        signal: controller.signal,
+      });
+
+      if (attempt < retries && isTransient(res.status)) {
+        await sleep(250 * (attempt + 1));
+        continue;
+      }
+
+      return res;
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  throw new Error('Token exchange failed after retries.');
+}
+
 export async function GET(req: NextRequest) {
   const code = req.nextUrl.searchParams.get('code');
   const state = req.nextUrl.searchParams.get('state');
@@ -33,17 +70,14 @@ export async function GET(req: NextRequest) {
   }
 
   const redirectUri = `${req.nextUrl.origin}/api/etsy/callback`;
-  const res = await fetch('https://api.etsy.com/v3/public/oauth/token', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      grant_type: 'authorization_code',
-      client_id: apiKey,
-      redirect_uri: redirectUri,
-      code,
-      code_verifier: pkce.verifier,
-    }),
+  const body = new URLSearchParams({
+    grant_type: 'authorization_code',
+    client_id: apiKey,
+    redirect_uri: redirectUri,
+    code,
+    code_verifier: pkce.verifier,
   });
+  const res = await exchangeTokenWithRetry('https://api.etsy.com/v3/public/oauth/token', body);
 
   if (!res.ok) {
     const err = await res.text();

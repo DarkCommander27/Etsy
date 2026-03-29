@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateContent, AISettings } from '@/lib/ai/client';
 import { getEtsyListingPrompt } from '@/lib/ai/prompts';
+import { parseGeneratedEtsyListing } from '@/lib/validation/generated';
+
+const MAX_LISTING_ATTEMPTS = 5;
 
 export async function POST(req: NextRequest) {
   try {
@@ -9,15 +12,24 @@ export async function POST(req: NextRequest) {
       nicheId: string; productTypeId: string; productName: string; settings?: AISettings;
     };
     const prompt = getEtsyListingPrompt(nicheId, productTypeId, productName);
-    const raw = await generateContent(prompt, settings);
-    let listing: Record<string, unknown>;
-    try {
-      const match = raw.match(/\{[\s\S]*\}/);
-      listing = match ? JSON.parse(match[0]) : { title: productName, tags: [], description: raw };
-    } catch {
-      listing = { title: productName, tags: [], description: raw };
+    let lastError = 'Failed to generate Etsy listing.';
+    let lastIssues: string[] = [];
+    for (let attempt = 1; attempt <= MAX_LISTING_ATTEMPTS; attempt += 1) {
+      const raw = await generateContent(prompt, settings, 'listing');
+      const parsed = parseGeneratedEtsyListing(raw);
+
+      if (parsed.success) {
+        return NextResponse.json({ listing: parsed.data, warnings: parsed.warnings });
+      }
+
+      lastError = parsed.error || 'Generated listing is invalid.';
+      lastIssues = parsed.issues;
     }
-    return NextResponse.json({ listing });
+
+    return NextResponse.json(
+      { error: lastError, details: lastIssues },
+      { status: 422 }
+    );
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Unknown error';
     return NextResponse.json({ error: msg }, { status: 500 });

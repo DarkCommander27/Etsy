@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { generatePKCE, savePKCE } from '@/lib/etsy/client';
 
 export async function GET(req: NextRequest) {
-  const apiKey = process.env.ETSY_API_KEY || req.nextUrl.searchParams.get('apiKey') || '';
+  const apiKey = process.env.ETSY_API_KEY || '';
 
   if (!apiKey) {
     return NextResponse.redirect(

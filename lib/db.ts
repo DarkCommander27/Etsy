@@ -13,6 +13,16 @@ export interface HistoryEntry {
   pageSize: string;
   createdAt: string;
   content?: unknown;
+  generatedImages?: Array<{
+    id: string;
+    rank: number;
+    filename: string;
+    url: string;
+    width: number;
+    height: number;
+    prompt: string;
+    createdAt: string;
+  }>;
 }
 
 function ensureDataDir() {

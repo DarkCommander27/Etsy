@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateContent, AISettings } from '@/lib/ai/client';
 import { getContentPrompt } from '@/lib/ai/prompts';
+import { evaluateProductQuality, parseGeneratedProductContent, PRODUCT_QUALITY_MIN_SCORE } from '@/lib/validation/generated';
+
+const MAX_GENERATION_ATTEMPTS = 5;
 
 export async function POST(req: NextRequest) {
   try {
@@ -9,15 +12,53 @@ export async function POST(req: NextRequest) {
       nicheId: string; productTypeId: string; customTitle?: string; settings?: AISettings;
     };
     const prompt = getContentPrompt(nicheId, productTypeId, customTitle);
-    const raw = await generateContent(prompt, settings);
-    let content: Record<string, unknown>;
-    try {
-      const match = raw.match(/\{[\s\S]*\}/);
-      content = match ? JSON.parse(match[0]) : { title: customTitle || productTypeId, raw };
-    } catch {
-      content = { title: customTitle || productTypeId, raw };
+    let bestCandidate: {
+      content: Record<string, unknown>;
+      warnings: string[];
+      qualityScore: number;
+      qualityIssues: string[];
+    } | null = null;
+    let lastIssues: string[] = [];
+    let lastError = 'Failed to generate quality content.';
+
+    for (let attempt = 1; attempt <= MAX_GENERATION_ATTEMPTS; attempt += 1) {
+      const raw = await generateContent(prompt, settings, 'product');
+      const parsed = parseGeneratedProductContent(raw);
+
+      if (!parsed.success || !parsed.data) {
+        lastIssues = parsed.issues;
+        lastError = parsed.error || 'Generated content is invalid.';
+        continue;
+      }
+
+      const quality = evaluateProductQuality(parsed.data);
+      const candidate = {
+        content: parsed.data,
+        warnings: parsed.warnings,
+        qualityScore: quality.score,
+        qualityIssues: quality.issues,
+      };
+
+      if (!bestCandidate || candidate.qualityScore > bestCandidate.qualityScore) {
+        bestCandidate = candidate;
+      }
+
+      if (quality.score >= PRODUCT_QUALITY_MIN_SCORE) {
+        return NextResponse.json(candidate);
+      }
+
+      lastIssues = quality.issues;
+      lastError = `Generated content quality score ${quality.score}/100 was below threshold (${PRODUCT_QUALITY_MIN_SCORE}/100).`;
     }
-    return NextResponse.json({ content });
+
+    return NextResponse.json(
+      {
+        error: lastError,
+        details: lastIssues,
+        bestCandidate,
+      },
+      { status: 422 }
+    );
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Unknown error';
     return NextResponse.json({ error: msg }, { status: 500 });

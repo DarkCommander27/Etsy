@@ -38,6 +38,7 @@ next-env.d.ts
 # data / uploads
 /data/*.json
 /uploads/
+/public/generated/listing-images/
 
 # API keys and secrets
 OpenAI_Api*

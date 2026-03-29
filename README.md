@@ -16,19 +16,29 @@ Open [http://localhost:3000](http://localhost:3000)
 ## Getting Free API Keys
 
 ### Google Gemini (Recommended)
+
 1. Go to [ai.google.dev](https://ai.google.dev)
 2. Click "Get API key" — no credit card needed
 3. Add to `.env.local`: `GEMINI_API_KEY=your-key`
 
 ### Groq (Fastest)
+
 1. Go to [console.groq.com](https://console.groq.com)
 2. Sign up and create a free API key
 3. Add to `.env.local`: `GROQ_API_KEY=your-key`
 
 ### Ollama (Local, Unlimited)
+
 1. Install from [ollama.com](https://ollama.com)
 2. Run: `ollama pull llama3`
 3. No API key needed — select Ollama in Settings
+
+### OpenAI (Listing Images)
+
+1. Go to [platform.openai.com](https://platform.openai.com)
+2. Create an API key
+3. Add to `.env.local`: `OPENAI_API_KEY=your-key`
+4. Or set it in **Settings** under "OpenAI API Key (for listing images)"
 
 ## Configuring AI Provider
 
@@ -41,13 +51,13 @@ Go to **Settings** in the app sidebar and select your provider, or set `DEFAULT_
 3. Pick a product type
 4. Customize colors, font, page size
 5. Click **Generate Content with AI**
-6. Download your PDF
-7. Use **Etsy Helper** to generate the listing title, tags, and description
+6. Download your PDF (this now also auto-generates 5 Etsy listing images)
+7. Continue to Etsy listing and publish with PDF + generated images
 
 ## Niches & Products
 
 | Niche | Products |
-|-------|---------|
+| ----- | -------- |
 | 🧠 ADHD | Daily Planner, Brain Dump, Dopamine Menu, Micro-Task Breaker, Habit Streak, Morning Ritual, Focus Timer, Weekly Reset |
 | 💙 MDD | Mood Check-In, Gratitude Journal, Small Win Cards, Self-Care Menu, Therapy Prep, Affirmation Deck, Progress Tracker, Gentle Planner |
 | 🌊 Anxiety | CBT Thought Record, 5-4-3-2-1 Grounding, Box Breathing, Worry Dump, Safety Plan, Calm Down Kit, Control Circle, Anxiety Tracker |
