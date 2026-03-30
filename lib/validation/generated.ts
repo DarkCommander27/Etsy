@@ -272,6 +272,47 @@ function getProductUsabilityIssues(content: ProductContent): string[] {
   return [...new Set(issues)];
 }
 
+export function applyContentQualityRepairs(content: ProductContent): ProductContent {
+  const hasGuidance = Boolean(
+    content.instructions ||
+    content.prompts?.length ||
+    content.steps?.length ||
+    content.columns?.length ||
+    content.after_instruction ||
+    content.after_dump_prompt
+  );
+
+  if (hasGuidance) {
+    return content;
+  }
+
+  const hasStructuredContent = Boolean(
+    content.sections?.length ||
+    content.categories?.length ||
+    content.time_blocks?.length ||
+    content.top_3_priorities?.length
+  );
+
+  if (!hasStructuredContent) {
+    return content;
+  }
+
+  let guidance = 'Work through each part in order, keep your answers specific, and choose one next action before you finish.';
+
+  if (content.time_blocks?.length || content.top_3_priorities?.length) {
+    guidance = 'Start with your top priorities, then fill in the schedule with realistic tasks and finish by marking the most important next step.';
+  } else if (content.categories?.length) {
+    guidance = 'Write at least one entry in each category, then circle the area that needs your attention first and take one small action.';
+  } else if (content.sections?.length) {
+    guidance = 'Complete each section in order, keep answers concrete, and circle the item you will act on first when you are done.';
+  }
+
+  return {
+    ...content,
+    after_instruction: content.after_instruction || guidance,
+  };
+}
+
 export function evaluateProductQuality(content: ProductContent): { score: number; issues: string[] } {
   let score = 100;
   const issues: string[] = [];

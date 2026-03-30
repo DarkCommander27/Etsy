@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateContent, AIProviderError, AISettings } from '@/lib/ai/client';
 import { ContentQualityTemplateId, getContentPrompt } from '@/lib/ai/prompts';
-import { evaluateProductQuality, parseGeneratedProductContent, PRODUCT_QUALITY_MIN_SCORE } from '@/lib/validation/generated';
+import { applyContentQualityRepairs, evaluateProductQuality, parseGeneratedProductContent, PRODUCT_QUALITY_MIN_SCORE } from '@/lib/validation/generated';
 
 const MAX_GENERATION_ATTEMPTS = 8;
 
@@ -44,9 +44,10 @@ export async function POST(req: NextRequest) {
         continue;
       }
 
-      const quality = evaluateProductQuality(parsed.data);
+      const repairedContent = applyContentQualityRepairs(parsed.data);
+      const quality = evaluateProductQuality(repairedContent);
       const candidate = {
-        content: parsed.data,
+        content: repairedContent,
         warnings: parsed.warnings,
         qualityScore: quality.score,
         qualityIssues: quality.issues,

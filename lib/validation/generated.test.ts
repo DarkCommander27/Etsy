@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  applyContentQualityRepairs,
   PRODUCT_QUALITY_MIN_SCORE,
   evaluateNichePublishChecklist,
   evaluateProductQuality,
@@ -110,6 +111,45 @@ describe('evaluateProductQuality', () => {
     });
 
     expect(quality.issues).not.toContain('Missing practical instructions or guided prompts.');
+  });
+
+  it('adds practical guidance for structured planner content when missing', () => {
+    const repaired = applyContentQualityRepairs({
+      title: 'Weekly Focus Planner',
+      subtitle: 'Map your week before it gets busy',
+      top_3_priorities: ['Client work', 'Meal prep', 'Workout plan'],
+      time_blocks: [
+        { time: 'Monday', task: '' },
+        { time: 'Tuesday', task: '' },
+        { time: 'Wednesday', task: '' },
+        { time: 'Thursday', task: '' },
+        { time: 'Friday', task: '' },
+        { time: 'Saturday', task: '' },
+        { time: 'Sunday', task: '' },
+      ],
+      affirmation: 'Small planning sessions reduce stress later.',
+    });
+
+    expect(repaired.after_instruction).toBeTruthy();
+    const quality = evaluateProductQuality(repaired);
+    expect(quality.issues).not.toContain('Missing practical instructions or guided prompts.');
+  });
+
+  it('does not overwrite existing guidance during repair', () => {
+    const repaired = applyContentQualityRepairs({
+      title: 'Brain Reset Journal',
+      subtitle: 'Clear your mind and choose one next step',
+      sections: [
+        { name: 'Tasks', description: 'Capture open loops', items: ['Email Sam', 'Book appointment', 'Pay invoice'] },
+        { name: 'Ideas', description: 'Capture creative sparks', items: ['New offer idea', 'Content angle', 'Workflow tweak'] },
+        { name: 'Worries', description: 'Name concerns directly', items: ['Deadline', 'Finances', 'Decision fatigue'] },
+      ],
+      instructions: 'Write fast, do not self-edit, then choose one item to handle first.',
+      affirmation: 'Clarity comes from getting it out of your head.',
+    });
+
+    expect(repaired.instructions).toBe('Write fast, do not self-edit, then choose one item to handle first.');
+    expect(repaired.after_instruction).toBeUndefined();
   });
 });
 
