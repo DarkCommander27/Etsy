@@ -29,6 +29,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ images: result.images, warnings: result.warnings, provider: result.provider });
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Unknown error';
+    console.error('[generate-images] 500 error:', err);
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
