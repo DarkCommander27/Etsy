@@ -51,6 +51,28 @@ function dedupeWords(words: string[]): string[] {
   return result;
 }
 
+function dedupeWordsInTitle(title: string): string {
+  // Split on pipe/colon separators, dedupe words within each segment, then rejoin
+  const segments = title.split(/(\s*[|:]\s*)/);
+  return segments
+    .map((seg, i) => {
+      // Keep the separator tokens (odd indices) as-is
+      if (i % 2 === 1) return seg;
+      const seen = new Set<string>();
+      return seg
+        .trim()
+        .split(/\s+/)
+        .filter((word) => {
+          const key = word.toLowerCase().replace(/[^a-z0-9]/g, '');
+          if (!key || seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        })
+        .join(' ');
+    })
+    .join('');
+}
+
 function trimToEtsyTitleLimit(title: string): string {
   if (title.length <= MAX_TITLE_LENGTH) return title;
   return `${title.slice(0, MAX_TITLE_LENGTH - 1).trimEnd()}…`;
@@ -130,6 +152,7 @@ export function generateProductNameIdeas(input: {
   ]);
 
   const scored = rawIdeas
+    .map((idea) => dedupeWordsInTitle(idea))
     .map((idea) => trimToEtsyTitleLimit(idea))
     .map((idea) => scoreIdea(idea, mainNicheKeyword))
     .sort((a, b) => b.score - a.score || a.title.localeCompare(b.title));
