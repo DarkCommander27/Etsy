@@ -59,6 +59,10 @@ export async function POST(req: NextRequest) {
   if (!etsyApiKey) {
     return NextResponse.json({ error: 'Etsy API key is required. Add it in Settings.' }, { status: 400 });
   }
+  // Reject keys with non-alphanumeric characters to prevent header injection
+  if (!/^[a-z0-9_-]{8,64}$/i.test(etsyApiKey)) {
+    return NextResponse.json({ error: 'Invalid Etsy API key format.' }, { status: 400 });
+  }
 
   const params = new URLSearchParams({
     keywords: keyword,

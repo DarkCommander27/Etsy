@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import crypto from 'crypto';
 import { generatePDF, PDFOptions } from '@/lib/pdf/generator';
 import { addHistoryEntry } from '@/lib/db';
 import { validateProductContent } from '@/lib/validation/generated';
@@ -8,6 +9,17 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const { nicheId, productTypeId, title, colorScheme, pageSize, content } = body;
+
+    // Basic type validation for metadata fields
+    if (nicheId !== undefined && typeof nicheId !== 'string') {
+      return NextResponse.json({ error: 'nicheId must be a string.' }, { status: 400 });
+    }
+    if (productTypeId !== undefined && typeof productTypeId !== 'string') {
+      return NextResponse.json({ error: 'productTypeId must be a string.' }, { status: 400 });
+    }
+    if (title !== undefined && (typeof title !== 'string' || title.length > 500)) {
+      return NextResponse.json({ error: 'title must be a string under 500 characters.' }, { status: 400 });
+    }
     const validated = validateProductContent(content);
     if (!validated.success) {
       return NextResponse.json({ error: validated.error, details: validated.issues }, { status: 422 });
@@ -24,11 +36,15 @@ export async function POST(req: NextRequest) {
       content: validated.data,
     };
     const pdfBytes = await generatePDF(options);
-    addHistoryEntry({
-      id: Date.now().toString(), nicheId, productTypeId, title,
-      colorScheme: colorScheme?.id || 'default', pageSize: pageSize || 'letter',
-      createdAt: new Date().toISOString(),
-    });
+    try {
+      addHistoryEntry({
+        id: crypto.randomUUID(), nicheId, productTypeId, title,
+        colorScheme: colorScheme?.id || 'default', pageSize: pageSize || 'letter',
+        createdAt: new Date().toISOString(),
+      });
+    } catch {
+      // History write failure should never block the PDF response
+    }
     try {
       saveOutputFolder({
         title: title || productTypeId,

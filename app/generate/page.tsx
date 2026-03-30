@@ -372,8 +372,8 @@ function GenerateContent() {
         : [];
 
       const settings = getSettings();
-      if (!etsyConnected || !settings.etsyApiKey || !settings.etsyShopId) {
-        setAutomationStatus('Auto draft skipped: connect Etsy in Settings to fully automate publishing.');
+      if (!etsyConnected || !settings.etsyShopId) {
+        setAutomationStatus('Auto draft skipped: connect Etsy and set your Shop ID in Settings to fully automate publishing.');
         return;
       }
 

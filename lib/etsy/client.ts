@@ -193,7 +193,7 @@ export async function createListing(params: CreateListingParams) {
   const token = await getValidToken(params.apiKey);
   if (!token) throw new Error('Not connected to Etsy. Please reconnect in Settings.');
 
-  const res = await fetchWithTimeout(
+  const res = await fetchWithRetry(
     `https://openapi.etsy.com/v3/application/shops/${params.shopId}/listings`,
     {
       method: 'POST',
@@ -214,8 +214,7 @@ export async function createListing(params: CreateListingParams) {
         tags: listingData.tags,
         state: 'draft',
       }),
-    },
-    ETZY_REQUEST_TIMEOUT_MS
+    }
   );
 
   if (!res.ok) {

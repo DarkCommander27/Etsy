@@ -77,7 +77,9 @@ export async function GET(req: NextRequest) {
   const res = await exchangeTokenWithRetry('https://api.etsy.com/v3/public/oauth/token', body);
 
   if (!res.ok) {
-    const err = await res.text();
+    const rawErr = await res.text();
+    // Truncate to avoid exceeding browser URL length limits (~2KB)
+    const err = rawErr.slice(0, 200).replace(/[\r\n]+/g, ' ').trim() || 'Token exchange failed';
     return NextResponse.redirect(
       `${req.nextUrl.origin}/settings?etsy_error=${encodeURIComponent(err || 'Token exchange failed')}`
     );

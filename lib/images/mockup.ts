@@ -84,7 +84,7 @@ function buildPrompt(request: ListingImageRequest, variation: string): string {
 	].filter(Boolean).join(' ');
 }
 
-async function generateImagePng(prompt: string, apiKey: string): Promise<Buffer> {
+async function generateImagePng(prompt: string, apiKey: string): Promise<{ png: Buffer; width: number; height: number }> {
 	const client = new OpenAI({ apiKey, timeout: 60_000, maxRetries: 1 });
 
 	// Try gpt-image-1 first (requires org-level access); fall back to dall-e-3.
@@ -95,7 +95,7 @@ async function generateImagePng(prompt: string, apiKey: string): Promise<Buffer>
 			size: '1536x1024',
 		});
 		const b64 = response.data?.[0]?.b64_json;
-		if (b64) return Buffer.from(b64, 'base64');
+		if (b64) return { png: Buffer.from(b64, 'base64'), width: 1536, height: 1024 };
 	} catch {
 		// gpt-image-1 not available for this key — fall through to dall-e-3
 	}
@@ -112,7 +112,7 @@ async function generateImagePng(prompt: string, apiKey: string): Promise<Buffer>
 	if (!b64) {
 		throw new Error('Image provider returned no image data.');
 	}
-	return Buffer.from(b64, 'base64');
+	return { png: Buffer.from(b64, 'base64'), width: 1792, height: 1024 };
 }
 
 export async function generateAndStoreListingImages(request: ListingImageRequest): Promise<{ images: ListingImageMeta[]; warnings: string[]; provider: 'openai' }> {
@@ -139,15 +139,15 @@ export async function generateAndStoreListingImages(request: ListingImageRequest
 		const prompt = buildPrompt(request, IMAGE_VARIANTS[index] || IMAGE_VARIANTS[0]);
 		const filename = `${baseSlug}-${batchId}-${rank}.png`;
 		const filePath = path.join(GENERATED_DIR, filename);
-		return generateImagePng(prompt, apiKey).then((png) => {
+		return generateImagePng(prompt, apiKey).then(({ png, width, height }) => {
 			fs.writeFileSync(filePath, png);
 			return {
 				id: `${batchId}-${rank}`,
 				rank,
 				filename,
 				url: `/generated/listing-images/${filename}`,
-				width: 1792,
-				height: 1024,
+				width,
+				height,
 				prompt,
 				createdAt: generatedAt,
 			} satisfies ListingImageMeta;
