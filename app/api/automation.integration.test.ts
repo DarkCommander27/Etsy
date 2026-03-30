@@ -200,6 +200,7 @@ describe('API automation integration', () => {
           accent: '#60A5FA',
           background: '#F0F7FF',
         },
+        settings: { openaiApiKey: 'test-openai-key' },
       })
     );
     expect(imagesRes.status).toBe(200);

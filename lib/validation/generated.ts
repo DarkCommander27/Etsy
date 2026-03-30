@@ -114,7 +114,7 @@ export type EtsyListingDraft = z.infer<typeof etsyListingSchema>;
 export type ListingImageRequest = z.infer<typeof listingImageRequestSchema>;
 export type ListingImageMeta = z.infer<typeof listingImageMetaSchema>;
 
-export const PRODUCT_QUALITY_MIN_SCORE = 90;
+export const PRODUCT_QUALITY_MIN_SCORE = 75;
 
 export interface ValidationResult<T> {
   success: boolean;

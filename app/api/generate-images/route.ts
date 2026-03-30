@@ -17,6 +17,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Validated image request was unexpectedly empty.' }, { status: 500 });
     }
 
+    const apiKey = validated.data.settings?.openaiApiKey || process.env.OPENAI_API_KEY || '';
+    if (!apiKey) {
+      return NextResponse.json(
+        { error: 'OpenAI API key is required to generate listing images. Add it in Settings → OpenAI API Key.' },
+        { status: 400 }
+      );
+    }
+
     const result = await generateAndStoreListingImages(validated.data);
     return NextResponse.json({ images: result.images, warnings: result.warnings, provider: result.provider });
   } catch (err) {

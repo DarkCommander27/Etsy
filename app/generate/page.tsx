@@ -328,6 +328,21 @@ function GenerateContent() {
         }),
       });
       const data = await res.json();
+      // 422 with a bestCandidate means all attempts fell below the quality threshold —
+      // use the closest result rather than surfacing an error to the user.
+      if (res.status === 422 && data.bestCandidate) {
+        const bc = data.bestCandidate;
+        setContent(bc.content);
+        setEditableContent(JSON.stringify(bc.content, null, 2));
+        setContentWarnings([
+          `Quality score ${bc.qualityScore}/100 was below target. Review carefully before publishing.`,
+          ...(Array.isArray(bc.warnings) ? bc.warnings : []),
+        ]);
+        setQualityScore(Number.isFinite(Number(bc.qualityScore)) ? Number(bc.qualityScore) : null);
+        setQualityIssues(Array.isArray(bc.qualityIssues) ? bc.qualityIssues : []);
+        setStep(5);
+        return;
+      }
       if (!res.ok || data.error) throw new Error(formatApiError(data, 'Failed to generate content'));
       setContent(data.content);
       setEditableContent(JSON.stringify(data.content, null, 2));
