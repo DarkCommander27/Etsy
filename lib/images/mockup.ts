@@ -85,13 +85,29 @@ function buildPrompt(request: ListingImageRequest, variation: string): string {
 }
 
 async function generateImagePng(prompt: string, apiKey: string): Promise<Buffer> {
-	const client = new OpenAI({ apiKey, timeout: 30_000, maxRetries: 2 });
-	const response = await client.images.generate({
-		model: 'gpt-image-1',
-		prompt,
-		size: '1536x1024',
-	});
+	const client = new OpenAI({ apiKey, timeout: 60_000, maxRetries: 1 });
 
+	// Try gpt-image-1 first (requires org-level access); fall back to dall-e-3.
+	try {
+		const response = await client.images.generate({
+			model: 'gpt-image-1',
+			prompt,
+			size: '1536x1024',
+		});
+		const b64 = response.data?.[0]?.b64_json;
+		if (b64) return Buffer.from(b64, 'base64');
+	} catch {
+		// gpt-image-1 not available for this key — fall through to dall-e-3
+	}
+
+	const response = await client.images.generate({
+		model: 'dall-e-3',
+		prompt,
+		size: '1792x1024',
+		quality: 'hd',
+		response_format: 'b64_json',
+		n: 1,
+	});
 	const b64 = response.data?.[0]?.b64_json;
 	if (!b64) {
 		throw new Error('Image provider returned no image data.');
@@ -130,7 +146,7 @@ export async function generateAndStoreListingImages(request: ListingImageRequest
 				rank,
 				filename,
 				url: `/generated/listing-images/${filename}`,
-				width: 1536,
+				width: 1792,
 				height: 1024,
 				prompt,
 				createdAt: generatedAt,
