@@ -6,7 +6,7 @@ import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Spinner } from '@/components/ui/Spinner';
-import type { NicheResearchResult, TopListing } from '@/app/api/niche-research/route';
+import type { NicheResearchResult, TopListing } from '@/lib/nicheResearch';
 
 const STORAGE_KEY = 'etsygen-settings';
 
@@ -251,7 +251,7 @@ function ResearchResult({ result, onUse }: { result: NicheResearchResult; onUse:
       {result.topListings.length > 0 && (
         <Card padding="none">
           <div className="p-4 border-b border-slate-100 dark:border-slate-800">
-            <h3 className="font-semibold text-slate-800 dark:text-slate-200 text-sm">Top Listings for "{result.keyword}"</h3>
+            <h3 className="font-semibold text-slate-800 dark:text-slate-200 text-sm">Top Listings for &quot;{result.keyword}&quot;</h3>
           </div>
           <div className="divide-y divide-slate-100 dark:divide-slate-800">
             {result.topListings.map((listing) => (
@@ -264,7 +264,7 @@ function ResearchResult({ result, onUse }: { result: NicheResearchResult; onUse:
       {/* Action */}
       <div className="flex gap-3 pt-2">
         <Button onClick={() => onUse(result.keyword)}>
-          ✨ Generate listings for "{result.keyword}"
+          ✨ Generate listings for &quot;{result.keyword}&quot;
         </Button>
       </div>
     </div>

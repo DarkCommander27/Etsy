@@ -139,7 +139,7 @@ interface ListingImageMeta {
   createdAt: string;
 }
 
-type ImageProviderMode = 'openai' | 'local' | 'mixed';
+type ImageProviderMode = 'openai';
 
 interface ProductNameIdea {
   title: string;
@@ -456,7 +456,7 @@ function GenerateContent() {
       const images = Array.isArray(data.images) ? data.images : [];
       setGeneratedImages(images);
       setImageWarnings(Array.isArray(data.warnings) ? data.warnings : []);
-      setImageProviderMode(data.provider === 'openai' || data.provider === 'local' || data.provider === 'mixed' ? data.provider : null);
+      setImageProviderMode(data.provider === 'openai' ? data.provider : null);
       return images;
     } catch (e) {
       setImageWarnings([e instanceof Error ? e.message : 'Failed to generate listing images']);
@@ -904,10 +904,10 @@ function GenerateContent() {
               {!hasOpenAIImageKey() && (
                 <div className="mb-3 p-3 bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded-lg">
                   <p className="text-xs text-amber-700 dark:text-amber-300 font-medium">
-                    OpenAI image key not detected in Settings. Listing images will use local fallback mockups.
+                    OpenAI image key not detected in Settings. Listing images cannot be generated until a key is added.
                     {' '}
                     <a href="/settings" className="underline">Add OpenAI key</a>
-                    {' '}for full AI-generated listing images.
+                    {' '}to enable image generation.
                   </p>
                 </div>
               )}
@@ -935,8 +935,8 @@ function GenerateContent() {
                   <div className="flex items-center justify-between mb-2">
                     <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">Generated listing images ({generatedImages.length}/5)</p>
                     {imageProviderMode && (
-                      <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${imageProviderMode === 'openai' ? 'bg-emerald-100 dark:bg-emerald-900 text-emerald-700 dark:text-emerald-300' : imageProviderMode === 'mixed' ? 'bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300' : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'}`}>
-                        {imageProviderMode === 'openai' ? 'OpenAI images' : imageProviderMode === 'mixed' ? 'Mixed: OpenAI + fallback' : 'Local fallback images'}
+                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900 text-emerald-700 dark:text-emerald-300">
+                        OpenAI images
                       </span>
                     )}
                     <button

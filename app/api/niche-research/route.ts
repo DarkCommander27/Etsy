@@ -1,26 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { NicheResearchResult, TopListing } from '@/lib/nicheResearch';
 
 const ETSY_API_BASE = 'https://openapi.etsy.com/v3/application';
 const REQUEST_TIMEOUT_MS = 15_000;
-
-export interface TopListing {
-  id: number;
-  title: string;
-  price: string;
-  favorers: number;
-  url: string;
-}
-
-export interface NicheResearchResult {
-  keyword: string;
-  totalListings: number;
-  avgFavorers: number;
-  avgPrice: number;
-  topListings: TopListing[];
-  opportunityScore: number;
-  competitionLevel: 'low' | 'medium' | 'high';
-  demandLevel: 'low' | 'medium' | 'high';
-}
 
 function clamp(v: number, min: number, max: number) {
   return Math.min(Math.max(v, min), max);

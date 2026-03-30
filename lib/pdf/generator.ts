@@ -1,4 +1,4 @@
-import { PDFDocument, rgb, StandardFonts } from 'pdf-lib/cjs';
+import { PDFDocument, PDFFont, PDFPage, rgb, StandardFonts } from 'pdf-lib/cjs';
 
 export interface ColorScheme {
   id?: string;
@@ -52,7 +52,7 @@ function wrapText(text: string, maxWidth: number, font: { widthOfTextAtSize: (te
 }
 
 function drawWrappedText(args: {
-  page: any;
+  page: PDFPage;
   text: string;
   x: number;
   y: number;
@@ -61,7 +61,7 @@ function drawWrappedText(args: {
   minSize: number;
   maxLines: number;
   lineHeight: number;
-  font: any;
+  font: PDFFont;
   color: ReturnType<typeof rgb>;
 }): { linesUsed: number; finalY: number } {
   const {
