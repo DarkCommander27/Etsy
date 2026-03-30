@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { generatePDF, PDFOptions } from '@/lib/pdf/generator';
 import { addHistoryEntry } from '@/lib/db';
 import { validateProductContent } from '@/lib/validation/generated';
+import { saveOutputFolder } from '@/lib/output';
 
 export async function POST(req: NextRequest) {
   try {
@@ -28,6 +29,17 @@ export async function POST(req: NextRequest) {
       colorScheme: colorScheme?.id || 'default', pageSize: pageSize || 'letter',
       createdAt: new Date().toISOString(),
     });
+    try {
+      saveOutputFolder({
+        title: title || productTypeId,
+        nicheId,
+        productTypeId,
+        pdfBytes,
+        content: validated.data as Record<string, unknown>,
+      });
+    } catch {
+      // Output folder save is best-effort — never block the PDF response
+    }
     const safeTitle = (title || 'document').replace(/[^a-z0-9]/gi, '-');
     return new NextResponse(Buffer.from(pdfBytes), {
       headers: { 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename="${safeTitle}.pdf"` },

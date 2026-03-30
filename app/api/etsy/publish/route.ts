@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { createListing, uploadListingFile, uploadListingImage } from '@/lib/etsy/client';
 import { generatePDF, PDFOptions } from '@/lib/pdf/generator';
+import { saveOutputFolder } from '@/lib/output';
 import { PRODUCT_QUALITY_MIN_SCORE, evaluateNichePublishChecklist, evaluateProductQuality, validateEtsyListing, validateListingImageMeta, validateProductContent } from '@/lib/validation/generated';
 
 const DATA_DIR = path.join(process.cwd(), 'data');
@@ -173,6 +174,21 @@ export async function POST(req: NextRequest) {
         const pdfBytes = await generatePDF(pdfOptions);
         const filename = `${listingData.title.replace(/[^a-z0-9]/gi, '-').substring(0, 50)}.pdf`;
         await uploadListingFile(shopId, listing.listing_id, effectiveApiKey, pdfBytes, filename);
+        try {
+          saveOutputFolder({
+            title: String(pdfOptions.title || listingData.title || ''),
+            nicheId: String(pdfOptions.nicheId || ''),
+            productTypeId: String(pdfOptions.productTypeId || ''),
+            pdfBytes,
+            content: pdfOptions.content as Record<string, unknown>,
+            listing: {
+              title: listingData.title,
+              description: listingData.description,
+              tags: listingData.tags,
+              taxonomyId: Number.isInteger(taxonomyId) ? (taxonomyId as number) : undefined,
+            },
+          });
+        } catch { /* best-effort: output folder write should never block publish */ }
       } catch (uploadErr) {
         return NextResponse.json({
           listing,
