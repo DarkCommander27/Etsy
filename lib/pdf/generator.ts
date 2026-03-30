@@ -27,7 +27,16 @@ function hexToRgb(hex: string): [number, number, number] {
 
 function safeText(text: unknown): string {
   if (typeof text !== 'string') return '';
-  return text.replace(/[^\x20-\x7E]/g, '').trim().substring(0, 400);
+  return text
+    .replace(/[\u2018\u2019]/g, "'")   // curly single quotes → straight
+    .replace(/[\u201C\u201D]/g, '"')   // curly double quotes → straight
+    .replace(/\u2014/g, ' - ')         // em dash → spaced hyphen
+    .replace(/\u2013/g, '-')           // en dash → hyphen
+    .replace(/\u2026/g, '...')         // ellipsis → three dots
+    .replace(/\u2022/g, '-')           // bullet point → hyphen
+    .replace(/[^\x20-\x7E]/g, '')      // strip any remaining non-ASCII
+    .trim()
+    .substring(0, 400);
 }
 
 function wrapText(text: string, maxWidth: number, font: { widthOfTextAtSize: (text: string, size: number) => number }, size: number): string[] {

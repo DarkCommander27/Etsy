@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Image from 'next/image';
 import { NICHES, getNicheById, NICHE_LIGHT_COLORS, NICHE_TEXT_COLORS } from '@/lib/niches';
-import { PRODUCT_QUALITY_MIN_SCORE } from '@/lib/validation/generated';
+import { PRODUCT_QUALITY_MIN_SCORE, evaluateProductQuality } from '@/lib/validation/generated';
 import { CONTENT_VARIATIONS, ContentVariationId } from '@/lib/ai/prompts';
 import { getSettings } from '@/lib/settings';
 import { EtsyListing, ListingImageMeta } from '@/lib/types';
@@ -145,55 +145,6 @@ const CONTENT_QUALITY_TEMPLATES = {
 
 type ContentQualityTemplateId = keyof typeof CONTENT_QUALITY_TEMPLATES;
 
-function evaluateContentQuality(content: Record<string, unknown>): { score: number; issues: string[] } {
-  let score = 100;
-  const issues: string[] = [];
-
-  const title = String(content.title || '').trim();
-  const subtitle = String(content.subtitle || '').trim();
-  const sections = Array.isArray(content.sections) ? content.sections : [];
-  const categories = Array.isArray(content.categories) ? content.categories : [];
-  const timeBlocks = Array.isArray(content.time_blocks) ? content.time_blocks : [];
-  const steps = Array.isArray(content.steps) ? content.steps : [];
-  const columns = Array.isArray(content.columns) ? content.columns : [];
-  const prompts = Array.isArray(content.prompts) ? content.prompts : [];
-  const instructions = String(content.instructions || '').trim();
-  const afterInstruction = String(content.after_instruction || '').trim();
-  const afterDumpPrompt = String(content.after_dump_prompt || '').trim();
-  const closing = [content.affirmation, content.reminder, content.note, content.after_instruction].some(Boolean);
-
-  if (title.length < 8) {
-    score -= 12;
-    issues.push('Title is too short and likely low-conversion.');
-  }
-  if (!subtitle) {
-    score -= 8;
-    issues.push('Missing subtitle/context line.');
-  }
-  if (!sections.length && !categories.length && !timeBlocks.length && !steps.length && !columns.length) {
-    score -= 30;
-    issues.push('No substantial content blocks for a useful printable.');
-  }
-  if (sections.some((sec) => Array.isArray((sec as { items?: unknown[] }).items) && ((sec as { items?: unknown[] }).items?.length || 0) < 3)) {
-    score -= 10;
-    issues.push('One or more sections are too shallow (fewer than 3 items).');
-  }
-  if (timeBlocks.length > 0 && timeBlocks.length < 6) {
-    score -= 10;
-    issues.push('Schedule block is too short to be practically useful.');
-  }
-  if (!instructions && !prompts.length && !steps.length && !columns.length && !afterInstruction && !afterDumpPrompt) {
-    score -= 12;
-    issues.push('Missing practical instructions or guided prompts.');
-  }
-  if (!closing) {
-    score -= 6;
-    issues.push('Missing closing note/affirmation.');
-  }
-
-  return { score: Math.max(0, Math.min(100, score)), issues };
-}
-
 function formatApiError(data: { error?: string; details?: string[] }, fallback: string): string {
   const details = Array.isArray(data.details) ? data.details : [];
   return [data.error || fallback, ...details].join(' ');
@@ -274,6 +225,13 @@ function GenerateContent() {
       .then(({ connected }) => setEtsyConnected(!!connected))
       .catch(() => {});
   }, []);
+
+  // Revoke blob URLs when replaced or on unmount to avoid memory leaks
+  useEffect(() => {
+    return () => {
+      if (pdfUrl) URL.revokeObjectURL(pdfUrl);
+    };
+  }, [pdfUrl]);
 
   const generateEtsyListing = useCallback(async (): Promise<EtsyListing | null> => {
     setEtsyLoading(true);
@@ -388,7 +346,7 @@ function GenerateContent() {
       } catch {
         throw new Error('Edited JSON is invalid. Fix it or switch back to preview before generating the PDF.');
       }
-      const quality = evaluateContentQuality(finalContent as Record<string, unknown>);
+      const quality = evaluateProductQuality(finalContent as Parameters<typeof evaluateProductQuality>[0]);
       setQualityScore(quality.score);
       setQualityIssues(quality.issues);
       const res = await fetch('/api/generate-pdf', {
@@ -409,7 +367,9 @@ function GenerateContent() {
       a.click();
 
       setAutomationStatus('Generating 5 Etsy listing images...');
-      const images = await generateListingImages();
+      const images = hasOpenAIImageKey()
+        ? await generateListingImages()
+        : [];
 
       const settings = getSettings();
       if (!etsyConnected || !settings.etsyApiKey || !settings.etsyShopId) {
