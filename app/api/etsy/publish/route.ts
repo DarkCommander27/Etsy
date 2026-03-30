@@ -58,7 +58,6 @@ export async function POST(req: NextRequest) {
       taxonomyId?: number;
       price: number;
       shopId: string;
-      apiKey?: string;
       idempotencyKey?: string;
       pdfOptions?: PDFOptions;
       listingImages?: Array<{
@@ -72,7 +71,7 @@ export async function POST(req: NextRequest) {
         createdAt: string;
       }>;
     };
-    const { title, description, tags, taxonomyId, price, shopId, apiKey, idempotencyKey, pdfOptions, listingImages } = body;
+    const { title, description, tags, taxonomyId, price, shopId, idempotencyKey, pdfOptions, listingImages } = body;
     const publishWarnings: string[] = [];
 
     if (idempotencyKey && idempotencyKey.trim().length >= 8) {
@@ -87,7 +86,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const effectiveApiKey = apiKey || process.env.ETSY_API_KEY || '';
+    const effectiveApiKey = process.env.ETSY_API_KEY || '';
     if (!effectiveApiKey) {
       return NextResponse.json({ error: 'Etsy API key not configured. Add ETSY_API_KEY to .env.local.' }, { status: 400 });
     }

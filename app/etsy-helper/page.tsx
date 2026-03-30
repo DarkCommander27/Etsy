@@ -5,14 +5,8 @@ import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Select } from '@/components/ui/Select';
 import { Spinner } from '@/components/ui/Spinner';
-
-interface EtsyListing {
-  title: string;
-  tags: string[];
-  description: string;
-  category?: string;
-  taxonomyId?: number;
-}
+import { getSettings } from '@/lib/settings';
+import type { EtsyListing } from '@/lib/types';
 
 export default function EtsyHelperPage() {
   const [nicheId, setNicheId] = useState('');
@@ -24,11 +18,6 @@ export default function EtsyHelperPage() {
 
   const niche = getNicheById(nicheId);
   const product = niche?.products.find((p) => p.id === productTypeId);
-
-  function getSettings() {
-    try { return JSON.parse(localStorage.getItem('etsygen-settings') || '{}'); }
-    catch { return {}; }
-  }
 
   async function generate() {
     if (!nicheId || !productTypeId) return;
@@ -137,7 +126,7 @@ export default function EtsyHelperPage() {
                 Tags <span className="font-normal text-slate-400">({listing.tags?.length}/13)</span>
               </h3>
               <button
-                onClick={() => copy(listing.tags?.join(', '), 'tags')}
+                onClick={() => copy((listing.tags ?? []).join(', '), 'tags')}
                 className="text-xs bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-300 px-2 py-1 rounded hover:bg-indigo-200 dark:hover:bg-indigo-800 transition-colors shrink-0"
               >
                 {copied === 'tags' ? '✓ Copied!' : 'Copy all'}

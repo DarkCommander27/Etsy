@@ -9,5 +9,8 @@ export default defineConfig({
   },
   test: {
     environment: 'node',
+    env: {
+      ETSY_API_KEY: 'test-key',
+    },
   },
 });

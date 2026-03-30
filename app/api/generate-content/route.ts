@@ -14,14 +14,13 @@ function buildQualityRetryPrompt(basePrompt: string, issues: string[], attempt: 
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
-    const { nicheId, productTypeId, customTitle, settings, qualityTemplateId } = body as {
-      nicheId: string;
-      productTypeId: string;
-      customTitle?: string;
-      settings?: AISettings;
-      qualityTemplateId?: ContentQualityTemplateId;
-    };
+    const body: unknown = await req.json();
+    const rawBody = body && typeof body === 'object' ? body as Record<string, unknown> : {};
+    const nicheId = typeof rawBody.nicheId === 'string' ? rawBody.nicheId : '';
+    const productTypeId = typeof rawBody.productTypeId === 'string' ? rawBody.productTypeId : '';
+    const customTitle = typeof rawBody.customTitle === 'string' ? rawBody.customTitle : undefined;
+    const settings = rawBody.settings && typeof rawBody.settings === 'object' ? rawBody.settings as AISettings : undefined;
+    const qualityTemplateId = rawBody.qualityTemplateId as ContentQualityTemplateId | undefined;
     const template = qualityTemplateId === 'best-quality' ? 'best-quality' : 'default';
     const prompt = getContentPrompt(nicheId, productTypeId, customTitle, template);
     let bestCandidate: {

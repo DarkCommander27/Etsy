@@ -1,11 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getPKCE, saveTokens, EtsyTokens } from '@/lib/etsy/client';
+import { getPKCE, saveTokens, clearPKCE, EtsyTokens } from '@/lib/etsy/client';
+import { sleep } from '@/lib/utils';
 
 const ETSY_TIMEOUT_MS = 20_000;
-
-function sleep(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
 
 function isTransient(status: number): boolean {
   return status === 408 || status === 429 || (status >= 500 && status <= 599);
@@ -100,5 +97,6 @@ export async function GET(req: NextRequest) {
   };
 
   saveTokens(tokens);
+  clearPKCE();
   return NextResponse.redirect(`${req.nextUrl.origin}/settings?etsy_connected=1`);
 }

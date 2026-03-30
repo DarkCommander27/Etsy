@@ -4,12 +4,11 @@ import { getNicheById, getProductById } from '@/lib/niches';
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
-    const { nicheId, productTypeId, customTitle } = body as {
-      nicheId?: string;
-      productTypeId?: string;
-      customTitle?: string;
-    };
+    const body: unknown = await req.json();
+    const rawBody = body && typeof body === 'object' ? body as Record<string, unknown> : {};
+    const nicheId = typeof rawBody.nicheId === 'string' ? rawBody.nicheId : undefined;
+    const productTypeId = typeof rawBody.productTypeId === 'string' ? rawBody.productTypeId : undefined;
+    const customTitle = typeof rawBody.customTitle === 'string' ? rawBody.customTitle : undefined;
 
     if (!nicheId || !productTypeId) {
       return NextResponse.json(

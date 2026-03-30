@@ -1,8 +1,11 @@
 'use client';
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Image from 'next/image';
 import { NICHES, getNicheById, NICHE_LIGHT_COLORS, NICHE_TEXT_COLORS } from '@/lib/niches';
+import { PRODUCT_QUALITY_MIN_SCORE } from '@/lib/validation/generated';
+import { getSettings } from '@/lib/settings';
+import { EtsyListing, ListingImageMeta } from '@/lib/types';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
@@ -120,25 +123,6 @@ function ContentPreview({ content }: { content: Record<string, unknown> }) {
   );
 }
 
-interface EtsyListing {
-  title: string;
-  tags: string[];
-  description: string;
-  category?: string;
-  taxonomyId?: number;
-}
-
-interface ListingImageMeta {
-  id: string;
-  rank: number;
-  filename: string;
-  url: string;
-  width: number;
-  height: number;
-  prompt: string;
-  createdAt: string;
-}
-
 type ImageProviderMode = 'openai';
 
 interface ProductNameIdea {
@@ -159,8 +143,6 @@ const CONTENT_QUALITY_TEMPLATES = {
 } as const;
 
 type ContentQualityTemplateId = keyof typeof CONTENT_QUALITY_TEMPLATES;
-
-const PRODUCT_QUALITY_MIN_SCORE = 82;
 
 function evaluateContentQuality(content: Record<string, unknown>): { score: number; issues: string[] } {
   let score = 100;
@@ -283,24 +265,43 @@ function GenerateContent() {
     setShowRawJson(false);
   }
 
+  // Check Etsy connection once on mount
   useEffect(() => {
-    if (nicheId && searchParams.get('niche')) setStep(2);
-    // Check Etsy connection
-    fetch('/api/etsy/status').then((r) => r.json()).then(({ connected }) => setEtsyConnected(!!connected)).catch(() => {});
-  }, [nicheId, searchParams]);
+    fetch('/api/etsy/status')
+      .then((r) => r.json())
+      .then(({ connected }) => setEtsyConnected(!!connected))
+      .catch(() => {});
+  }, []);
+
+  const generateEtsyListing = useCallback(async (): Promise<EtsyListing | null> => {
+    setEtsyLoading(true);
+    setEtsyError('');
+    setListingWarnings([]);
+    try {
+      const res = await fetch('/api/generate-etsy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nicheId, productTypeId, productName: title || product?.name, settings: getSettings() }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(formatApiError(data, 'Failed to generate Etsy listing'));
+      setEtsyListing(data.listing);
+      setListingWarnings(Array.isArray(data.warnings) ? data.warnings : []);
+      return data.listing as EtsyListing;
+    } catch (e) {
+      setEtsyError(e instanceof Error ? e.message : 'Failed to generate Etsy listing');
+      return null;
+    } finally {
+      setEtsyLoading(false);
+    }
+  }, [nicheId, productTypeId, title, product]);
 
   // Auto-generate Etsy listing when entering step 6
   useEffect(() => {
     if (step === 6 && !etsyListing && !etsyLoading && nicheId && productTypeId) {
       generateEtsyListing();
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step]);
-
-  function getSettings() {
-    try { return JSON.parse(localStorage.getItem('etsygen-settings') || '{}'); }
-    catch { return {}; }
-  }
+  }, [step, etsyListing, etsyLoading, nicheId, productTypeId, generateEtsyListing]);
 
   function hasOpenAIImageKey(): boolean {
     const settings = getSettings();
@@ -468,29 +469,6 @@ function GenerateContent() {
     }
   }
 
-  async function generateEtsyListing(): Promise<EtsyListing | null> {
-    setEtsyLoading(true);
-    setEtsyError('');
-    setListingWarnings([]);
-    try {
-      const res = await fetch('/api/generate-etsy', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nicheId, productTypeId, productName: title || product?.name, settings: getSettings() }),
-      });
-      const data = await res.json();
-      if (!res.ok || data.error) throw new Error(formatApiError(data, 'Failed to generate Etsy listing'));
-      setEtsyListing(data.listing);
-      setListingWarnings(Array.isArray(data.warnings) ? data.warnings : []);
-      return data.listing as EtsyListing;
-    } catch (e) {
-      setEtsyError(e instanceof Error ? e.message : 'Failed to generate Etsy listing');
-      return null;
-    } finally {
-      setEtsyLoading(false);
-    }
-  }
-
   async function publishToEtsy(options?: {
     listing?: EtsyListing;
     finalContent?: Record<string, unknown> | null;
@@ -535,7 +513,6 @@ function GenerateContent() {
           taxonomyId: listingToPublish.taxonomyId,
           price: parseFloat(etsyPrice) || 5.0,
           shopId: s.etsyShopId,
-          apiKey: s.etsyApiKey,
           idempotencyKey,
           pdfOptions: { pageSize, colorScheme, title: title || product?.name, nicheId, productTypeId, content: finalContent },
           listingImages: images,
@@ -565,12 +542,14 @@ function GenerateContent() {
   }
 
   function downloadGeneratedImages() {
-    for (const image of generatedImages) {
-      const a = document.createElement('a');
-      a.href = image.url;
-      a.download = image.filename || `listing-image-${image.rank}.png`;
-      a.click();
-    }
+    generatedImages.forEach((image, i) => {
+      setTimeout(() => {
+        const a = document.createElement('a');
+        a.href = image.url;
+        a.download = image.filename || `listing-image-${image.rank}.png`;
+        a.click();
+      }, i * 100);
+    });
   }
 
   const steps = [

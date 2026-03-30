@@ -6,6 +6,12 @@ import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Spinner } from '@/components/ui/Spinner';
 
+type BadgeVariant = 'default' | 'blue' | 'purple' | 'teal' | 'amber' | 'green' | 'slate' | 'red';
+const BADGE_VARIANTS = new Set<BadgeVariant>(['default', 'blue', 'purple', 'teal', 'amber', 'green', 'slate', 'red']);
+function toBadgeVariant(color: string | undefined): BadgeVariant {
+  return BADGE_VARIANTS.has(color as BadgeVariant) ? (color as BadgeVariant) : 'default';
+}
+
 interface HistoryEntry {
   id: string;
   nicheId: string;
@@ -41,10 +47,11 @@ export default function HistoryPage() {
             {history.length} total · {todayCount} today
           </p>
         </div>
-        <Link href="/generate">
-          <button className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">
-            + New Product
-          </button>
+        <Link
+          href="/generate"
+          className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+        >
+          + New Product
         </Link>
       </div>
 
@@ -83,7 +90,7 @@ export default function HistoryPage() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
-                  <Badge variant={(niche?.color as 'blue') || 'default'}>
+                  <Badge variant={toBadgeVariant(niche?.color)}>
                     {entry.colorScheme}
                   </Badge>
                   <span className="text-xs text-slate-400 dark:text-slate-500">

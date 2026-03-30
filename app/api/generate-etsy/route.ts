@@ -8,10 +8,12 @@ const MAX_LISTING_ATTEMPTS = 8;
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
-    const { nicheId, productTypeId, productName, settings } = body as {
-      nicheId: string; productTypeId: string; productName: string; settings?: AISettings;
-    };
+    const body: unknown = await req.json();
+    const rawBody = body && typeof body === 'object' ? body as Record<string, unknown> : {};
+    const nicheId = typeof rawBody.nicheId === 'string' ? rawBody.nicheId : '';
+    const productTypeId = typeof rawBody.productTypeId === 'string' ? rawBody.productTypeId : '';
+    const productName = typeof rawBody.productName === 'string' ? rawBody.productName : '';
+    const settings = rawBody.settings && typeof rawBody.settings === 'object' ? rawBody.settings as AISettings : undefined;
     const prompt = getEtsyListingPrompt(nicheId, productTypeId, productName);
     const categoryInfo = getEtsyCategoryForProduct(nicheId, productTypeId, productName);
     let lastError = 'Failed to generate Etsy listing.';

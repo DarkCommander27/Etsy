@@ -118,19 +118,14 @@ export async function generateAndStoreListingImages(request: ListingImageRequest
 	const generatedAt = new Date().toISOString();
 	const batchId = `${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
 	const baseSlug = slugify(request.title || 'listing-image');
-	const images: ListingImageMeta[] = [];
-
-	for (let index = 0; index < count; index += 1) {
+	const tasks = Array.from({ length: count }, (_, index) => {
 		const rank = index + 1;
 		const prompt = buildPrompt(request, IMAGE_VARIANTS[index] || IMAGE_VARIANTS[0]);
 		const filename = `${baseSlug}-${batchId}-${rank}.png`;
 		const filePath = path.join(GENERATED_DIR, filename);
-
-		try {
-			const png = await generateImagePng(prompt, apiKey);
-
+		return generateImagePng(prompt, apiKey).then((png) => {
 			fs.writeFileSync(filePath, png);
-			images.push({
+			return {
 				id: `${batchId}-${rank}`,
 				rank,
 				filename,
@@ -139,9 +134,17 @@ export async function generateAndStoreListingImages(request: ListingImageRequest
 				height: 1024,
 				prompt,
 				createdAt: generatedAt,
-			});
-		} catch (err) {
-			warnings.push(`Image ${rank} failed to generate: ${err instanceof Error ? err.message : 'Unknown error'}`);
+			} satisfies ListingImageMeta;
+		});
+	});
+
+	const results = await Promise.allSettled(tasks);
+	const images: ListingImageMeta[] = [];
+	for (const [i, result] of results.entries()) {
+		if (result.status === 'fulfilled') {
+			images.push(result.value);
+		} else {
+			warnings.push(`Image ${i + 1} failed to generate: ${result.reason instanceof Error ? result.reason.message : 'Unknown error'}`);
 		}
 	}
 

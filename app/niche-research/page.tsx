@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
+import type { ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { NICHES } from '@/lib/niches';
 import { Card } from '@/components/ui/Card';
@@ -7,8 +8,18 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Spinner } from '@/components/ui/Spinner';
 import type { NicheResearchResult, TopListing } from '@/lib/nicheResearch';
+import { getSettings } from '@/lib/settings';
 
-const STORAGE_KEY = 'etsygen-settings';
+function isNicheResearchResult(data: unknown): data is NicheResearchResult {
+  if (!data || typeof data !== 'object') return false;
+  const d = data as Record<string, unknown>;
+  return (
+    typeof d.keyword === 'string' &&
+    typeof d.totalListings === 'number' &&
+    typeof d.opportunityScore === 'number' &&
+    Array.isArray(d.topListings)
+  );
+}
 
 const QUICK_KEYWORDS = [
   ...NICHES.map((n) => n.name),
@@ -67,13 +78,8 @@ export default function NicheResearchPage() {
   const [history, setHistory] = useState<NicheResearchResult[]>([]);
 
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        const settings = JSON.parse(stored);
-        if (settings.etsyApiKey) setEtsyApiKey(settings.etsyApiKey);
-      }
-    } catch { /* ignore */ }
+    const s = getSettings();
+    if (s.etsyApiKey) setEtsyApiKey(String(s.etsyApiKey));
   }, []);
 
   async function research(kw: string) {
@@ -90,12 +96,17 @@ export default function NicheResearchPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ keyword: k, etsyApiKey }),
       });
-      const data = await res.json();
+      const data: unknown = await res.json();
       if (!res.ok) {
-        setError(data.error ?? 'Research failed');
+        const errData = data as Record<string, unknown>;
+        setError(typeof errData?.error === 'string' ? errData.error : 'Research failed');
         return;
       }
-      const r = data as NicheResearchResult;
+      if (!isNicheResearchResult(data)) {
+        setError('Unexpected response from server');
+        return;
+      }
+      const r = data;
       setResult(r);
       setHistory((prev) => [r, ...prev.filter((x) => x.keyword !== r.keyword)].slice(0, 10));
     } catch (err) {
@@ -105,7 +116,7 @@ export default function NicheResearchPage() {
     }
   }
 
-  function useNiche(kw: string) {
+  function handleUseNiche(kw: string) {
     // Find a matching niche id from NICHES by name or use the keyword as search
     const match = NICHES.find((n) => n.name.toLowerCase() === kw.toLowerCase());
     if (match) {
@@ -185,7 +196,7 @@ export default function NicheResearchPage() {
       )}
 
       {/* Result */}
-      {result && !loading && <ResearchResult result={result} onUse={useNiche} />}
+      {result && !loading && <ResearchResult result={result} onUse={handleUseNiche} />}
 
       {/* History */}
       {history.length > 1 && (
@@ -271,7 +282,7 @@ function ResearchResult({ result, onUse }: { result: NicheResearchResult; onUse:
   );
 }
 
-function MetricCard({ label, value, sub }: { label: string; value: React.ReactNode; sub: React.ReactNode }) {
+function MetricCard({ label, value, sub }: { label: string; value: ReactNode; sub: ReactNode }) {
   return (
     <Card padding="md">
       <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-1">{label}</p>
@@ -281,18 +292,32 @@ function MetricCard({ label, value, sub }: { label: string; value: React.ReactNo
   );
 }
 
+function isSafeUrl(url: string): boolean {
+  try {
+    const { protocol } = new URL(url);
+    return protocol === 'https:' || protocol === 'http:';
+  } catch {
+    return false;
+  }
+}
+
 function TopListingRow({ listing }: { listing: TopListing }) {
+  const safeUrl = isSafeUrl(listing.url) ? listing.url : undefined;
   return (
     <div className="flex items-start justify-between gap-3 px-4 py-3">
       <div className="flex-1 min-w-0">
-        <a
-          href={listing.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-sm font-medium text-indigo-600 dark:text-indigo-400 hover:underline line-clamp-2"
-        >
-          {listing.title}
-        </a>
+        {safeUrl ? (
+          <a
+            href={safeUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-sm font-medium text-indigo-600 dark:text-indigo-400 hover:underline line-clamp-2"
+          >
+            {listing.title}
+          </a>
+        ) : (
+          <span className="text-sm font-medium text-slate-700 dark:text-slate-300 line-clamp-2">{listing.title}</span>
+        )}
       </div>
       <div className="shrink-0 text-right">
         <div className="text-sm font-semibold text-slate-700 dark:text-slate-300">{listing.price}</div>

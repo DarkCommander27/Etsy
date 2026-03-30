@@ -197,7 +197,7 @@ export async function generatePDF(options: PDFOptions): Promise<Uint8Array> {
   }
 
   if (Array.isArray(content?.time_blocks)) {
-    const blocks = (content.time_blocks as Array<{time: string; task: string}>).slice(0, 10);
+    const blocks = (content.time_blocks as Array<{time: string; task: string}>).slice(0, 24);
     ensureSpace(36 + blocks.length * 18);
     page.drawRectangle({ x: margin, y: y - 4, width: contentWidth, height: 20, color: rgb(...secondary) });
     page.drawText('SCHEDULE', { x: margin + 5, y, size: 9, font: bold, color: rgb(...primary) });

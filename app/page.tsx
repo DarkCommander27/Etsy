@@ -6,6 +6,12 @@ import { NICHES, NICHE_LIGHT_COLORS, NICHE_TEXT_COLORS, getNicheById } from '@/l
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 
+type BadgeVariant = 'default' | 'blue' | 'purple' | 'teal' | 'amber' | 'green' | 'slate' | 'red';
+const BADGE_VARIANTS = new Set<BadgeVariant>(['default', 'blue', 'purple', 'teal', 'amber', 'green', 'slate', 'red']);
+function toBadgeVariant(color: string | undefined): BadgeVariant {
+  return BADGE_VARIANTS.has(color as BadgeVariant) ? (color as BadgeVariant) : 'default';
+}
+
 interface HistoryEntry {
   id: string;
   nicheId: string;
@@ -17,6 +23,7 @@ interface HistoryEntry {
 export default function Dashboard() {
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [todayCount, setTodayCount] = useState(0);
+  const [historyError, setHistoryError] = useState('');
 
   useEffect(() => {
     fetch('/api/history')
@@ -27,7 +34,7 @@ export default function Dashboard() {
         const today = new Date().toDateString();
         setTodayCount(h.filter((e: HistoryEntry) => new Date(e.createdAt).toDateString() === today).length);
       })
-      .catch(() => {});
+      .catch(() => setHistoryError('Could not load history.'));
   }, []);
 
   return (
@@ -41,6 +48,12 @@ export default function Dashboard() {
           Your personal digital product generator
         </p>
       </div>
+
+      {historyError && (
+        <div className="mb-4 p-3 bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded-lg text-red-700 dark:text-red-300 text-sm">
+          {historyError}
+        </div>
+      )}
 
       {/* Stats row */}
       <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-8">
@@ -153,7 +166,7 @@ export default function Dashboard() {
                         </p>
                       </div>
                     </div>
-                    <Badge variant={(niche?.color as 'blue') || 'default'}>
+                    <Badge variant={toBadgeVariant(niche?.color)}>
                       {entry.productTypeId.replace(/-/g, ' ')}
                     </Badge>
                   </div>

@@ -2,15 +2,12 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import { validateEtsyListing } from '@/lib/validation/generated';
+import { sleep } from '@/lib/utils';
 
 const DATA_DIR = path.join(process.cwd(), 'data');
 const AUTH_FILE = path.join(DATA_DIR, 'etsy-auth.json');
 const PKCE_FILE = path.join(DATA_DIR, 'etsy-pkce.json');
 const ETZY_REQUEST_TIMEOUT_MS = 20_000;
-
-function sleep(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
 
 function isTransientStatus(status: number): boolean {
   return status === 408 || status === 429 || (status >= 500 && status <= 599);
@@ -113,6 +110,12 @@ export function getPKCE(): { verifier: string; state: string } | null {
   try {
     return JSON.parse(fs.readFileSync(PKCE_FILE, 'utf-8'));
   } catch { return null; }
+}
+
+export function clearPKCE(): void {
+  try {
+    if (fs.existsSync(PKCE_FILE)) fs.unlinkSync(PKCE_FILE);
+  } catch { /* ignore */ }
 }
 
 export function generatePKCE() {

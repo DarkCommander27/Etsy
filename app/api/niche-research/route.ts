@@ -51,7 +51,7 @@ export async function POST(req: NextRequest) {
   }
 
   const keyword = (body.keyword ?? '').trim();
-  const etsyApiKey = (body.etsyApiKey ?? '').trim();
+  const etsyApiKey = (body.etsyApiKey ?? '').trim() || (process.env.ETSY_API_KEY ?? '');
 
   if (!keyword) {
     return NextResponse.json({ error: 'keyword is required' }, { status: 400 });
