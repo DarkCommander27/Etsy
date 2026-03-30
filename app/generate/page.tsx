@@ -4,6 +4,7 @@ import { useSearchParams } from 'next/navigation';
 import Image from 'next/image';
 import { NICHES, getNicheById, NICHE_LIGHT_COLORS, NICHE_TEXT_COLORS } from '@/lib/niches';
 import { PRODUCT_QUALITY_MIN_SCORE } from '@/lib/validation/generated';
+import { CONTENT_VARIATIONS, ContentVariationId } from '@/lib/ai/prompts';
 import { getSettings } from '@/lib/settings';
 import { EtsyListing, ListingImageMeta } from '@/lib/types';
 import { Button } from '@/components/ui/Button';
@@ -215,6 +216,7 @@ function GenerateContent() {
   const [qualityScore, setQualityScore] = useState<number | null>(null);
   const [qualityIssues, setQualityIssues] = useState<string[]>([]);
   const [qualityTemplateId, setQualityTemplateId] = useState<ContentQualityTemplateId>('best-quality');
+  const [variationId, setVariationId] = useState<ContentVariationId>('standard');
   const [generatedImages, setGeneratedImages] = useState<ListingImageMeta[]>([]);
   const [imageWarnings, setImageWarnings] = useState<string[]>([]);
   const [imageProviderMode, setImageProviderMode] = useState<ImageProviderMode | null>(null);
@@ -321,6 +323,7 @@ function GenerateContent() {
           productTypeId,
           customTitle: title,
           qualityTemplateId,
+          variationId,
           settings: getSettings(),
         }),
       });
@@ -745,7 +748,7 @@ function GenerateContent() {
             </div>
           </Card>
           <Card padding="md" className="mb-4 border border-emerald-200 dark:border-emerald-900 bg-emerald-50/60 dark:bg-emerald-950/30">
-            <div className="space-y-3">
+            <div className="space-y-4">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <p className="text-sm font-semibold text-emerald-900 dark:text-emerald-200">Content quality template</p>
@@ -760,9 +763,6 @@ function GenerateContent() {
                   <option value="default">Standard</option>
                 </select>
               </div>
-              <p className="text-xs text-emerald-700 dark:text-emerald-300">
-                {CONTENT_QUALITY_TEMPLATES[qualityTemplateId].description}
-              </p>
               {qualityTemplateId === 'best-quality' && (
                 <ul className="text-xs text-emerald-800 dark:text-emerald-200 space-y-1 list-disc list-inside">
                   <li>Requires clear instructions, prompts, or steps</li>
@@ -770,6 +770,26 @@ function GenerateContent() {
                   <li>Pushes for richer, buyer-usable structure</li>
                 </ul>
               )}
+              <div className="border-t border-emerald-200 dark:border-emerald-800 pt-3">
+                <p className="text-sm font-semibold text-emerald-900 dark:text-emerald-200 mb-1">Content style variation</p>
+                <p className="text-xs text-emerald-700 dark:text-emerald-300 mb-2">Generates meaningfully different content for the same product — use a different style per listing to avoid duplicates.</p>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {CONTENT_VARIATIONS.map((v) => (
+                    <button
+                      key={v.id}
+                      onClick={() => setVariationId(v.id)}
+                      className={`text-left p-2 rounded-lg border text-xs transition-all ${
+                        variationId === v.id
+                          ? 'border-emerald-500 bg-emerald-100 dark:bg-emerald-900 text-emerald-900 dark:text-emerald-100'
+                          : 'border-emerald-200 dark:border-emerald-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:border-emerald-400'
+                      }`}
+                    >
+                      <p className="font-semibold">{v.label}</p>
+                      <p className="text-slate-500 dark:text-slate-400 mt-0.5 leading-tight">{v.description}</p>
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
           </Card>
           <Button onClick={generateAIContent} loading={loading} size="lg" className="w-full">

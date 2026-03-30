@@ -1,5 +1,46 @@
 export type ContentQualityTemplateId = 'default' | 'best-quality';
 
+export const CONTENT_VARIATIONS = [
+  {
+    id: 'standard',
+    label: 'Standard',
+    description: 'Balanced, practical layout with proven structure.',
+    instruction: null,
+  },
+  {
+    id: 'minimalist',
+    label: 'Minimalist',
+    description: 'Fewer items, more breathing room — ideal for overwhelmed users.',
+    instruction: 'Minimalist variation: reduce each section to only the highest-value 3-4 items. Remove anything generic or filler. Rewrite labels to be shorter and cleaner. Give the sheet more white space and breathing room. The user should feel calm looking at it, not overwhelmed.',
+  },
+  {
+    id: 'expert',
+    label: 'Expert',
+    description: 'Clinical language, named frameworks, specialist depth.',
+    instruction: 'Expert variation: use professional-grade language and explicitly name the evidence-based frameworks being used (e.g. CBT, DBT, executive function theory, Pomodoro technique, SMART goals). Add nuance and depth to each item. The buyer should feel they are getting something a therapist, coach, or specialist would use.',
+  },
+  {
+    id: 'beginner',
+    label: 'Beginner Friendly',
+    description: 'Simpler language, sentence starters, more hand-holding.',
+    instruction: 'Beginner-friendly variation: rewrite every label and prompt assuming the user is new to this topic. Add sentence starters (e.g. "I feel... because..."). Use simple, jargon-free language. Add brief instructions before each section explaining what to do and why. Make it impossible to get wrong.',
+  },
+  {
+    id: 'action',
+    label: 'Action-First',
+    description: 'Every prompt starts with a verb — do this, write that.',
+    instruction: 'Action-first variation: rewrite every section name and prompt item to start with an imperative verb (Write, Circle, Rate, List, Draw, Name, Choose, Check). Remove all passive or vague language. The user should know exactly what to DO, not just what to think about. Focus on momentum over reflection.',
+  },
+  {
+    id: 'compassion',
+    label: 'Compassion-Forward',
+    description: 'Extra gentle tone — validates difficulty, no "should" language.',
+    instruction: 'Compassion-forward variation: rewrite every label, description, and affirmation with extra gentleness and validation. Explicitly acknowledge that things are hard. Remove all "should", "must", or judgmental language entirely. Add small validating phrases in section descriptions (e.g. "There is no wrong answer", "Even tiny counts", "You are doing enough"). The buyer should feel deeply seen and safe.',
+  },
+] as const;
+
+export type ContentVariationId = typeof CONTENT_VARIATIONS[number]['id'];
+
 const BEST_QUALITY_TEMPLATE_INSTRUCTIONS = `
 Quality template: BEST_QUALITY
 - Keep output practical and buyer-usable, not motivational filler.
@@ -15,7 +56,8 @@ export function getContentPrompt(
   nicheId: string,
   productTypeId: string,
   customTitle?: string,
-  qualityTemplateId: ContentQualityTemplateId = 'default'
+  qualityTemplateId: ContentQualityTemplateId = 'default',
+  variationId: ContentVariationId = 'standard'
 ): string {
   const title = customTitle || productTypeId.replace(/-/g, ' ');
   const specific: Record<string, Record<string, string>> = {
@@ -96,11 +138,16 @@ Include an affirmation message at the end.
 Make it practical, evidence-based, compassionate, and actionable. No markdown, just raw JSON.`;
   }
 
+  const variation = CONTENT_VARIATIONS.find((v) => v.id === variationId);
+  const variationInstruction = variation?.instruction
+    ? `\n\nContent variation to apply — ${variation.label}: ${variation.instruction}\nAdapt the subtitle, section names, descriptions, items, and affirmation to reflect this variation. Keep the exact same JSON field names and structure — only the text content should change.`
+    : '';
+
   if (qualityTemplateId === 'best-quality') {
-    return `${prompt}\n${BEST_QUALITY_TEMPLATE_INSTRUCTIONS}`;
+    return `${prompt}${variationInstruction}\n${BEST_QUALITY_TEMPLATE_INSTRUCTIONS}`;
   }
 
-  return prompt;
+  return `${prompt}${variationInstruction}`;
 }
 
 // SEO keyword banks per niche for stronger Etsy search ranking

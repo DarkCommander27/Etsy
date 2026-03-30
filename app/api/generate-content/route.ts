@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateContent, AIProviderError, AISettings } from '@/lib/ai/client';
-import { ContentQualityTemplateId, getContentPrompt } from '@/lib/ai/prompts';
+import { ContentQualityTemplateId, ContentVariationId, getContentPrompt } from '@/lib/ai/prompts';
 import { applyContentQualityRepairs, evaluateProductQuality, parseGeneratedProductContent, PRODUCT_QUALITY_MIN_SCORE } from '@/lib/validation/generated';
 
 const MAX_GENERATION_ATTEMPTS = 8;
@@ -21,8 +21,9 @@ export async function POST(req: NextRequest) {
     const customTitle = typeof rawBody.customTitle === 'string' ? rawBody.customTitle : undefined;
     const settings = rawBody.settings && typeof rawBody.settings === 'object' ? rawBody.settings as AISettings : undefined;
     const qualityTemplateId = rawBody.qualityTemplateId as ContentQualityTemplateId | undefined;
+    const variationId = rawBody.variationId as ContentVariationId | undefined;
     const template = qualityTemplateId === 'best-quality' ? 'best-quality' : 'default';
-    const prompt = getContentPrompt(nicheId, productTypeId, customTitle, template);
+    const prompt = getContentPrompt(nicheId, productTypeId, customTitle, template, variationId ?? 'standard');
     let bestCandidate: {
       content: Record<string, unknown>;
       warnings: string[];
