@@ -960,12 +960,12 @@ function GenerateContent() {
                 variant="secondary"
                 size="lg"
                 className="w-full"
-                disabled={imageLoading || generatedImages.length === 0}
+                disabled={imageLoading}
               >
                 Open Manual Etsy Editor →
               </Button>
               {generatedImages.length === 0 && !imageLoading && (
-                <p className="text-xs text-slate-500 mt-2 text-center">Generate the 5 listing images before continuing.</p>
+                <p className="text-xs text-slate-500 mt-2 text-center">Listing details, copy-ready text, and Etsy links will be in Step 6.</p>
               )}
             </div>
           </div>
@@ -983,7 +983,7 @@ function GenerateContent() {
             </p>
           </div>
 
-          {etsyError && (
+          {etsyError && etsyListing && (
             <div className="mb-4 p-3 bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded-lg text-red-700 dark:text-red-300 text-sm">
               {etsyError}
               {!etsyConnected && (
@@ -1123,10 +1123,19 @@ function GenerateContent() {
                     </div>
                   </>
                 ) : (
-                  <button onClick={generateEtsyListing}
-                    className="text-sm text-indigo-600 dark:text-indigo-400 hover:underline">
-                    Regenerate listing
-                  </button>
+                  <div className="py-6 text-center">
+                    {etsyError ? (
+                      <div className="mb-4 p-3 bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded-lg text-red-700 dark:text-red-300 text-sm text-left">
+                        {etsyError}
+                      </div>
+                    ) : null}
+                    <p className="text-sm text-slate-500 dark:text-slate-400 mb-3">
+                      {etsyError ? 'Failed to generate listing. Check your AI key in Settings, then retry.' : 'Listing not yet generated.'}
+                    </p>
+                    <Button onClick={() => { void generateEtsyListing(); }} size="sm">
+                      Generate Listing Details
+                    </Button>
+                  </div>
                 )}
               </div>
 
