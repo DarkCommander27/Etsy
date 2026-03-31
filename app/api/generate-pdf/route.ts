@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
     };
     const pdfBytes = await generatePDF(options);
     try {
-      addHistoryEntry({
+      await addHistoryEntry({
         id: crypto.randomUUID(), nicheId, productTypeId, title,
         colorScheme: colorScheme?.id || 'default', pageSize: pageSize || 'letter',
         createdAt: new Date().toISOString(),

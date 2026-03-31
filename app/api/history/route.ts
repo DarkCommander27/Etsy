@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
     if (!parsed.success) {
       return NextResponse.json({ error: 'Invalid history entry', details: parsed.error.flatten() }, { status: 400 });
     }
-    addHistoryEntry(parsed.data as HistoryEntry);
+    await addHistoryEntry(parsed.data as HistoryEntry);
     return NextResponse.json({ ok: true });
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 });

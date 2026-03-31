@@ -32,7 +32,7 @@ function ensureDataDir() {
 }
 
 /** Acquire an exclusive write lock via a lock file. Returns a release function. */
-function acquireLock(): () => void {
+async function acquireLock(): Promise<() => void> {
   const deadline = Date.now() + LOCK_TIMEOUT_MS;
   while (Date.now() < deadline) {
     try {
@@ -40,9 +40,8 @@ function acquireLock(): () => void {
       fs.writeFileSync(LOCK_FILE, String(process.pid), { flag: 'wx' });
       return () => { try { fs.unlinkSync(LOCK_FILE); } catch { /* already gone */ } };
     } catch {
-      // Lock held by another request — busy wait with small yield
-      const wait = Date.now() + 5;
-      while (Date.now() < wait) { /* spin */ }
+      // Lock held by another request — yield to the event loop before retrying
+      await new Promise<void>((r) => setTimeout(r, 5));
     }
   }
   // Timed out — stale lock, forcefully take it
@@ -66,8 +65,8 @@ export function saveHistory(entries: HistoryEntry[]) {
   fs.writeFileSync(HISTORY_FILE, JSON.stringify(entries, null, 2));
 }
 
-export function addHistoryEntry(entry: HistoryEntry) {
-  const release = acquireLock();
+export async function addHistoryEntry(entry: HistoryEntry): Promise<void> {
+  const release = await acquireLock();
   try {
     const history = getHistory();
     // Avoid duplicate IDs from retried requests
