@@ -170,7 +170,23 @@ RULES:
 3. No item under 5 meaningful words unless it is a checkbox label in an explicit fill-in tracker.
 4. No two items conveying the same idea in different words.
 5. Return raw JSON only — no markdown fences, no commentary, nothing outside the JSON object.`
-      : 'You create Etsy listing copy for real buyers. Always return valid JSON when asked. Avoid generic copy: use specific keywords, concrete product details, and complete fields with strong depth. Do not use empty hype, filler, or repetitive keyword stuffing.';
+  : `You write Etsy listing copy for real buyers spending real money. The listing must sound specific, credible, and useful — never like AI sludge, SEO spam, or vague marketing fluff.
+
+NEVER WRITE THIS KIND OF COPY:
+- "perfect for everyone"
+- "must-have"
+- "high quality product"
+- "beautifully designed"
+- "great gift"
+- repeated sentences that keep saying the same thing with different adjectives
+- filler claims with no product detail, like "stay organized and inspired" or "transform your life"
+
+REQUIREMENTS:
+1. Every sentence in the description must add NEW information.
+2. Be concrete about what the buyer gets, who it is for, how they use it, and what makes it useful.
+3. Use natural SEO keywords, but do not stuff or repeat them mechanically.
+4. Avoid generic hype, empty adjectives, and salesy nonsense.
+5. Return valid JSON only when asked — no markdown fences, no commentary.`;
 
   const modelCandidates =
     provider === 'gemini'

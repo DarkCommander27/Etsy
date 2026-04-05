@@ -163,6 +163,36 @@ describe('generation route validation', () => {
     expect(data.details.some((issue: string) => issue.startsWith('Listing description must be between 200 and 350 words; current count is '))).toBe(true);
   });
 
+  it('retries generate-etsy when the AI title drifts away from the product title', async () => {
+    const offTargetListing = JSON.stringify({
+      title: 'Calm Reset Workbook Printable Digital Download',
+      tags: LISTING_TAGS,
+      description: buildStrictDescription(230),
+    });
+    const validListing = JSON.stringify({
+      title: 'ADHD Daily Planner Printable Digital Download',
+      tags: LISTING_TAGS,
+      description: buildStrictDescription(230),
+    });
+    mocks.mockGenerateContent
+      .mockResolvedValueOnce(offTargetListing)
+      .mockResolvedValueOnce(validListing);
+
+    const response = await generateEtsyPost(
+      asNextRequest({
+        nicheId: 'adhd',
+        productTypeId: 'daily-planner',
+        productName: 'ADHD Daily Planner Printable',
+      })
+    );
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(mocks.mockGenerateContent).toHaveBeenCalledTimes(2);
+    expect(mocks.mockGenerateContent.mock.calls[1]?.[0]).toContain('Listing title must stay aligned with the PDF/product title');
+    expect(data.listing.title).toBe('ADHD Daily Planner Printable Digital Download');
+  });
+
   it('rejects generate-content requests without a valid selection', async () => {
     const response = await generateContentPost(asNextRequest({ nicheId: 'adhd' }));
     const data = await response.json();

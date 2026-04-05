@@ -154,6 +154,55 @@ function countWords(text: string): number {
   return text.trim().split(/\s+/).filter(Boolean).length;
 }
 
+function splitSentences(text: string): string[] {
+  return text
+    .split(/(?<=[.!?])\s+/)
+    .map((sentence) => sentence.trim())
+    .filter(Boolean);
+}
+
+function normalizeSentence(text: string): string {
+  return text.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+const LISTING_TITLE_STOP_WORDS = new Set([
+  'the', 'a', 'an', 'for', 'and', 'or', 'to', 'of', 'in', 'on', 'with', 'your',
+  'printable', 'digital', 'download', 'instant', 'pdf',
+]);
+
+const LISTING_TITLE_GENERIC_TERMS = new Set([
+  'planner', 'journal', 'workbook', 'worksheet', 'tracker', 'template', 'checklist', 'cards', 'deck', 'guide', 'page', 'pages',
+]);
+
+function extractListingTitleTerms(title: string): string[] {
+  return title
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .map((term) => term.trim())
+    .filter((term) => term.length >= 3 && !LISTING_TITLE_STOP_WORDS.has(term));
+}
+
+export function validateListingTitleAgainstReference(listingTitle: string, referenceTitle: string): string[] {
+  const listingTerms = new Set(extractListingTitleTerms(listingTitle));
+  const referenceTerms = extractListingTitleTerms(referenceTitle);
+  if (!referenceTerms.length) return [];
+
+  const distinctiveReferenceTerms = referenceTerms.filter((term) => !LISTING_TITLE_GENERIC_TERMS.has(term));
+  const sharedDistinctive = distinctiveReferenceTerms.filter((term) => listingTerms.has(term));
+  if (distinctiveReferenceTerms.length > 0 && sharedDistinctive.length === 0) {
+    return [`Listing title must stay aligned with the PDF/product title "${referenceTitle}" instead of inventing a different product.`];
+  }
+
+  const sharedTerms = referenceTerms.filter((term) => listingTerms.has(term));
+  const minimumSharedTerms = Math.max(1, Math.ceil(referenceTerms.length / 2));
+  if (sharedTerms.length < minimumSharedTerms) {
+    return [`Listing title must stay aligned with the PDF/product title "${referenceTitle}" instead of drifting into a different title.`];
+  }
+
+  return [];
+}
+
 function resolveProductSelection(nicheId: string, productTypeId: string): {
   niche?: Niche;
   product?: ProductType;
@@ -571,6 +620,12 @@ function getAntiGenericListingIssues(listing: EtsyListingDraft): string[] {
     'perfect for everyone',
     'high quality product',
     'premium quality',
+    'beautifully designed',
+    'great gift',
+    'easy to use',
+    'transform your life',
+    'stay organized and inspired',
+    'game changer',
     'lorem ipsum',
     'blah blah',
   ];
@@ -595,6 +650,14 @@ function getAntiGenericListingIssues(listing: EtsyListingDraft): string[] {
     : 1;
   if (descriptionWords.length >= 80 && descriptionUniqueRatio < 0.35) {
     issues.push('Listing description is too repetitive and not specific enough.');
+  }
+
+  const normalizedSentences = splitSentences(listing.description)
+    .map(normalizeSentence)
+    .filter((sentence) => sentence.length >= 24);
+  const repeatedSentenceCount = normalizedSentences.length - new Set(normalizedSentences).size;
+  if (repeatedSentenceCount > 0) {
+    issues.push('Listing description repeats the same sentence or claim instead of adding new information.');
   }
 
   if (!/(adhd|anxiety|mood|planner|tracker|worksheet|printable|template|checklist|journal)/i.test(description)) {

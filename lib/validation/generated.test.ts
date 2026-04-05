@@ -282,6 +282,36 @@ describe('validateEtsyListing', () => {
     expect(result.success).toBe(true);
   });
 
+  it('rejects listing descriptions with repeated sentences', () => {
+    const repeatedSentence = 'This ADHD daily planner printable is an instant digital download in PDF format for buyers who want calmer daily structure.';
+    const result = validateEtsyListing(
+      {
+        title: 'ADHD Daily Planner Printable Digital Download',
+        description: Array.from({ length: 18 }, () => repeatedSentence).join(' '),
+        tags: STRICT_LISTING_TAGS,
+      },
+      { requireAllTags: true, requireDescriptionTargets: true }
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.issues).toContain('Listing description repeats the same sentence or claim instead of adding new information.');
+  });
+
+  it('rejects listing descriptions with generic filler marketing phrases', () => {
+    const description = `${buildStrictDescription(230)} beautifully designed pages make this a great gift for anyone who wants a game changer.`;
+    const result = validateEtsyListing(
+      {
+        title: 'ADHD Daily Planner Printable Digital Download',
+        description,
+        tags: STRICT_LISTING_TAGS,
+      },
+      { requireAllTags: true, requireDescriptionTargets: true }
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.issues.some((issue) => issue.includes('beautifully designed'))).toBe(true);
+  });
+
   it('rejects generic listing copy', () => {
     const result = validateEtsyListing(
       {

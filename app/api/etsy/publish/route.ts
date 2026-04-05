@@ -5,7 +5,7 @@ import { createListing, getConfiguredEtsyApiKey, uploadListingFile, uploadListin
 import { generatePDF, PDFOptions } from '@/lib/pdf/generator';
 import { saveOutputFolder } from '@/lib/output';
 import { getPublishIdempotency, setPublishIdempotency } from '@/lib/storage';
-import { PRODUCT_QUALITY_MIN_SCORE, STRICT_ETSY_LISTING_VALIDATION, evaluateNichePublishChecklist, evaluateProductQuality, validateEtsyListing, validateListingImageMeta, validateProductContent } from '@/lib/validation/generated';
+import { PRODUCT_QUALITY_MIN_SCORE, STRICT_ETSY_LISTING_VALIDATION, evaluateNichePublishChecklist, evaluateProductQuality, validateEtsyListing, validateListingImageMeta, validateListingTitleAgainstReference, validateProductContent } from '@/lib/validation/generated';
 
 const IDEMPOTENCY_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const IDEMPOTENCY_MAX_ENTRIES = 2000;
@@ -75,6 +75,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Validated listing payload was unexpectedly empty.' }, { status: 500 });
     }
     const listingData = listingValidation.data;
+
+    if (pdfOptions?.title) {
+      const titleIssues = validateListingTitleAgainstReference(listingData.title, String(pdfOptions.title));
+      if (titleIssues.length > 0) {
+        return NextResponse.json(
+          { error: 'Listing title no longer matches the PDF/product title.', details: titleIssues, warnings: listingValidation.warnings },
+          { status: 422 }
+        );
+      }
+    }
 
     if (!Number.isFinite(Number(price)) || Number(price) < 0.2) {
       return NextResponse.json({ error: 'Price must be at least $0.20.' }, { status: 422 });

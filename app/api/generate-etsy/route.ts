@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateContent, AIProviderError, AISettings } from '@/lib/ai/client';
 import { getEtsyListingPrompt } from '@/lib/ai/prompts';
-import { parseGeneratedEtsyListing, validateEtsyListingGenerationRequest } from '@/lib/validation/generated';
+import { STRICT_ETSY_LISTING_VALIDATION, parseGeneratedEtsyListing, validateEtsyListingGenerationRequest, validateListingTitleAgainstReference } from '@/lib/validation/generated';
 import { getEtsyCategoryForProduct } from '@/lib/etsy/categories';
 
 const MAX_LISTING_ATTEMPTS = 8;
@@ -33,9 +33,16 @@ export async function POST(req: NextRequest) {
         ? `\n\nPrevious attempt issues to fix:\n${lastIssues.slice(0, 6).map((i) => `- ${i}`).join('\n')}\n\nFix all listed issues while keeping the same JSON shape. If the description length was wrong, rewrite the full description so it lands comfortably between 230 and 300 words.`
         : '';
       const raw = await generateContent(prompt + retryNote, settings, 'listing');
-      const parsed = parseGeneratedEtsyListing(raw, { requireDescriptionTargets: true });
+      const parsed = parseGeneratedEtsyListing(raw, STRICT_ETSY_LISTING_VALIDATION);
 
-      if (parsed.success) {
+      if (parsed.success && parsed.data) {
+        const titleIssues = validateListingTitleAgainstReference(parsed.data.title, productName);
+        if (titleIssues.length > 0) {
+          lastError = 'Generated listing title did not match the underlying product title.';
+          lastIssues = titleIssues;
+          continue;
+        }
+
         return NextResponse.json({
           listing: {
             ...parsed.data,

@@ -273,6 +273,7 @@ describe('API automation integration', () => {
     const publishRes = await publishPost(
       asNextRequest({
         ...validListing,
+        title: 'Plan Printable Digital Download',
         price: 5,
         shopId: '12345',
         apiKey: 'test-key',
@@ -349,6 +350,32 @@ describe('API automation integration', () => {
     expect(String(publishData.error)).toContain('Generated listing description did not meet Etsy quality requirements.');
     expect(publishData.details).toContain('Listing description must include the exact phrase "instant digital download".');
     expect(publishData.details).toContain('Listing description must explicitly mention PDF format.');
+    expect(mocks.mockCreateListing).not.toHaveBeenCalled();
+  });
+
+  it('blocks publish when the Etsy listing title drifts away from the PDF title', async () => {
+    const publishRes = await publishPost(
+      asNextRequest({
+        ...validListing,
+        title: 'Calm Reset Workbook Printable Digital Download',
+        price: 5,
+        shopId: '12345',
+        apiKey: 'test-key',
+        pdfOptions: {
+          pageSize: 'letter',
+          title: highQualityContent.title,
+          nicheId: 'adhd',
+          productTypeId: 'daily-planner',
+          content: highQualityContent,
+        },
+        listingImages,
+      })
+    );
+
+    expect(publishRes.status).toBe(422);
+    const publishData = await publishRes.json();
+    expect(String(publishData.error)).toContain('Listing title no longer matches the PDF/product title.');
+    expect(publishData.details.some((issue: string) => issue.includes('must stay aligned with the PDF/product title'))).toBe(true);
     expect(mocks.mockCreateListing).not.toHaveBeenCalled();
   });
 });
