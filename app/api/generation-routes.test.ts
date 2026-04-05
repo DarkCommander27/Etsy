@@ -43,6 +43,64 @@ import { POST as generateEtsyPost } from './generate-etsy/route';
 import { POST as generatePdfPost } from './generate-pdf/route';
 import { POST as generateTitleIdeasPost } from './generate-title-ideas/route';
 
+const LISTING_TAGS = [
+  'adhd planner',
+  'daily planner',
+  'printable pdf',
+  'digital download',
+  'focus planner',
+  'productivity',
+  'task organizer',
+  'instant download',
+  'planner page',
+  'minimal planner',
+  'adhd printable',
+  'life organizer',
+  'daily routine',
+];
+
+function buildStrictDescription(wordCount: number): string {
+  const requiredWords = [
+    'This',
+    'ADHD',
+    'daily',
+    'planner',
+    'printable',
+    'is',
+    'an',
+    'instant',
+    'digital',
+    'download',
+    'in',
+    'PDF',
+    'format',
+    'for',
+    'buyers',
+    'who',
+    'want',
+    'calmer',
+    'daily',
+    'structure',
+  ];
+
+  if (wordCount < requiredWords.length) {
+    throw new Error('wordCount is too small for the required Etsy description phrases.');
+  }
+
+  return [
+    ...requiredWords,
+    ...Array.from({ length: wordCount - requiredWords.length }, (_, index) => `detail${index}`),
+  ].join(' ');
+}
+
+function buildListingJson(description: string): string {
+  return JSON.stringify({
+    title: 'ADHD Daily Planner Printable Digital Download',
+    tags: LISTING_TAGS,
+    description,
+  });
+}
+
 function asNextRequest(body: unknown): NextRequest {
   return new Request('http://localhost/api/test', {
     method: 'POST',
@@ -63,53 +121,10 @@ describe('generation route validation', () => {
   });
 
   it('retries generate-etsy when the first description misses the required word range', async () => {
-    const shortDescription = [
-      'This instant digital download PDF printable planner helps ADHD users organize tasks, spot priorities, and build calmer routines with clear sections they can print and use right away.',
-      ...Array.from({ length: 52 }, (_, index) => `detail${index}`),
-    ].join(' ');
-    const shortListing = JSON.stringify({
-      title: 'ADHD Daily Planner Printable Digital Download',
-      tags: [
-        'adhd planner',
-        'daily planner',
-        'printable pdf',
-        'digital download',
-        'focus planner',
-        'productivity',
-        'task organizer',
-        'instant download',
-        'planner page',
-        'minimal planner',
-        'adhd printable',
-        'life organizer',
-        'daily routine',
-      ],
-      description: shortDescription,
-    });
-    const validDescription = [
-      'This ADHD daily planner printable is an instant digital download designed for adults who need a calmer, more structured way to move through the day.',
-      ...Array.from({ length: 205 }, (_, index) => `detail${index}`),
-      'PDF format included for easy home printing and print-shop use.',
-    ].join(' ');
-    const validListing = JSON.stringify({
-      title: 'ADHD Daily Planner Printable Digital Download',
-      tags: [
-        'adhd planner',
-        'daily planner',
-        'printable pdf',
-        'digital download',
-        'focus planner',
-        'productivity',
-        'task organizer',
-        'instant download',
-        'planner page',
-        'minimal planner',
-        'adhd printable',
-        'life organizer',
-        'daily routine',
-      ],
-      description: validDescription,
-    });
+    const shortDescription = buildStrictDescription(73);
+    const shortListing = buildListingJson(shortDescription);
+    const validDescription = buildStrictDescription(230);
+    const validListing = buildListingJson(validDescription);
     mocks.mockGenerateContent
       .mockResolvedValueOnce(shortListing)
       .mockResolvedValueOnce(validListing);
@@ -127,6 +142,25 @@ describe('generation route validation', () => {
     expect(mocks.mockGenerateContent).toHaveBeenCalledTimes(2);
     expect(mocks.mockGenerateContent.mock.calls[1]?.[0]).toContain('Listing description must be between 200 and 350 words; current count is');
     expect(data.listing.description).toBe(validDescription);
+  });
+
+  it('returns 422 after all 8 generate-etsy attempts fail validation', async () => {
+    const invalidListing = buildListingJson(buildStrictDescription(73));
+    mocks.mockGenerateContent.mockResolvedValue(invalidListing);
+
+    const response = await generateEtsyPost(
+      asNextRequest({
+        nicheId: 'adhd',
+        productTypeId: 'daily-planner',
+        productName: 'ADHD Daily Planner Printable',
+      })
+    );
+    const data = await response.json();
+
+    expect(response.status).toBe(422);
+    expect(mocks.mockGenerateContent).toHaveBeenCalledTimes(8);
+    expect(data.error).toBe('Generated listing description did not meet Etsy quality requirements.');
+    expect(data.details.some((issue: string) => issue.startsWith('Listing description must be between 200 and 350 words; current count is '))).toBe(true);
   });
 
   it('rejects generate-content requests without a valid selection', async () => {

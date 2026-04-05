@@ -10,6 +10,56 @@ import {
   validateProductSelectionRequest,
 } from './generated';
 
+const STRICT_LISTING_TAGS = [
+  'adhd planner',
+  'daily planner',
+  'printable pdf',
+  'digital download',
+  'focus planner',
+  'productivity',
+  'task organizer',
+  'instant download',
+  'planner page',
+  'minimal planner',
+  'adhd printable',
+  'life organizer',
+  'daily routine',
+];
+
+function buildStrictDescription(wordCount: number): string {
+  const requiredWords = [
+    'This',
+    'ADHD',
+    'daily',
+    'planner',
+    'printable',
+    'is',
+    'an',
+    'instant',
+    'digital',
+    'download',
+    'in',
+    'PDF',
+    'format',
+    'for',
+    'buyers',
+    'who',
+    'want',
+    'calmer',
+    'daily',
+    'structure',
+  ];
+
+  if (wordCount < requiredWords.length) {
+    throw new Error('wordCount is too small for the required Etsy description phrases.');
+  }
+
+  return [
+    ...requiredWords,
+    ...Array.from({ length: wordCount - requiredWords.length }, (_, index) => `detail${index}`),
+  ].join(' ');
+}
+
 describe('evaluateProductQuality', () => {
   it('scores high-quality printable content above publish threshold', () => {
     const quality = evaluateProductQuality({
@@ -191,29 +241,12 @@ describe('validateEtsyListing', () => {
   });
 
   it('rejects strict generation listings when the description is too short', () => {
-    const shortButLongEnoughDescription = [
-      'This instant digital download PDF printable planner helps ADHD users structure tasks, reduce overwhelm, and stay focused with guided sections they can print today.',
-      ...Array.from({ length: 52 }, (_, index) => `detail${index}`),
-    ].join(' ');
+    const shortButLongEnoughDescription = buildStrictDescription(73);
     const result = validateEtsyListing(
       {
         title: 'ADHD Daily Planner Printable Digital Download',
         description: shortButLongEnoughDescription,
-        tags: [
-          'adhd planner',
-          'daily planner',
-          'printable pdf',
-          'digital download',
-          'focus planner',
-          'productivity',
-          'task organizer',
-          'instant download',
-          'planner page',
-          'minimal planner',
-          'adhd printable',
-          'life organizer',
-          'daily routine',
-        ],
+        tags: STRICT_LISTING_TAGS,
       },
       { requireAllTags: true, requireDescriptionTargets: true }
     );
@@ -221,6 +254,32 @@ describe('validateEtsyListing', () => {
     expect(result.success).toBe(false);
     expect(result.error).toBe('Generated listing description did not meet Etsy quality requirements.');
     expect(result.issues.some((issue) => issue.startsWith('Listing description must be between 200 and 350 words; current count is '))).toBe(true);
+  });
+
+  it('accepts strict generation listings at the 200-word boundary', () => {
+    const result = validateEtsyListing(
+      {
+        title: 'ADHD Daily Planner Printable Digital Download',
+        description: buildStrictDescription(200),
+        tags: STRICT_LISTING_TAGS,
+      },
+      { requireAllTags: true, requireDescriptionTargets: true }
+    );
+
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts strict generation listings at the 350-word boundary', () => {
+    const result = validateEtsyListing(
+      {
+        title: 'ADHD Daily Planner Printable Digital Download',
+        description: buildStrictDescription(350),
+        tags: STRICT_LISTING_TAGS,
+      },
+      { requireAllTags: true, requireDescriptionTargets: true }
+    );
+
+    expect(result.success).toBe(true);
   });
 
   it('rejects generic listing copy', () => {
