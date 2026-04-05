@@ -33,6 +33,16 @@ const JOURNAL_PRODUCT_IDS = new Set([
   'gratitude-journal',
   'worry-dump',
   'reading-tracker',
+  'mood-checkin',
+  'therapy-prep',
+  'progress-tracker',
+  'gentle-planner',
+]);
+
+const STATIONERY_PRODUCT_IDS = new Set([
+  'affirmation-deck',
+  'small-win-cards',
+  'conversation-starters',
 ]);
 
 const WORKSHEET_PRODUCT_IDS = new Set([
@@ -62,12 +72,12 @@ export function getEtsyCategoryForProduct(
     return JOURNALS_NOTEBOOKS;
   }
 
-  if (WORKSHEET_PRODUCT_IDS.has(pid) || name.includes('worksheet')) {
-    return PATTERNS_BLUEPRINTS;
+  if (STATIONERY_PRODUCT_IDS.has(pid) || name.includes('stationery')) {
+    return STATIONERY;
   }
 
-  if (name.includes('stationery')) {
-    return STATIONERY;
+  if (WORKSHEET_PRODUCT_IDS.has(pid) || name.includes('worksheet')) {
+    return PATTERNS_BLUEPRINTS;
   }
 
   if (nicheId === 'human' && name.includes('notebook')) {

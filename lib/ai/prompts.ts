@@ -41,15 +41,107 @@ export const CONTENT_VARIATIONS = [
 
 export type ContentVariationId = typeof CONTENT_VARIATIONS[number]['id'];
 
+// Per-niche pools of creative angles — one is picked at random each generation.
+// This is the primary driver of genuine variation: it gives the AI a specific lens
+// that overrides the generic/predictable default output of any prompt template.
+const CREATIVE_ANGLES: Record<string, string[]> = {
+  adhd: [
+    'Creative angle: time blindness — help the user externalize time through visual cues, buffers, and transition anchors rather than relying on internal clocks.',
+    'Creative angle: initiation paralysis — every section ends with a micro-cue ("first physical action: open the doc / pick up the pen") to reduce task start-up cost.',
+    'Creative angle: dopamine-deficit reframe — frame every item as a small dopamine opportunity; weave in rewards, novelty hooks, and celebration moments.',
+    'Creative angle: rejection-sensitive dysphoria (RSD) — anticipate emotional crashes after mistakes or social events; include recovery prompts and self-compassion anchors.',
+    'Creative angle: hyperfocus channeling — include prompts for recognizing when hyperfocus is active and redirecting it toward high-leverage tasks rather than rabbit holes.',
+    'Creative angle: low-demand days — design every entry for a person operating on 20% capacity; minimum viable effort, permission slips, zero judgment.',
+    'Creative angle: sensory regulation — include body-based check-ins (temperature, sound, hunger, light) that affect ADHD focus before any cognitive work begins.',
+    'Creative angle: working memory scaffolding — externalize everything; no item should require the user to hold context in their head; write it down, check it off, see it.',
+    'Creative angle: body doubling and accountability — frame the worksheet as a "you and your future self" conversation; build in commitment devices and check-in moments.',
+  ],
+  mdd: [
+    'Creative angle: behavioral activation — lead with the tiniest possible physical actions; momentum before motivation, body before mind.',
+    'Creative angle: cognitive defusion — help the user observe thoughts without fusing with them; use distancing language ("I notice I am having the thought that...").',
+    'Creative angle: values-based living — ground every section in what genuinely matters to this person, not productivity metrics or external expectations.',
+    'Creative angle: post-crisis gentle re-entry — designed for the day after a very hard episode; ultra-soft expectations, zero performance, slow re-engagement with life.',
+    'Creative angle: grief and loss integration — honor what has been lost or given up while making gentle space for what remains and what is slowly returning.',
+    'Creative angle: window of tolerance — all prompts calibrated to work within a narrow window; nothing that floods or numbs; just enough challenge to grow.',
+    'Creative angle: radical self-compassion — every item explicitly validates difficulty rather than demanding change; the worksheet is a safe object, not a performance.',
+    'Creative angle: nervous system awareness — include somatic check-ins, physical safety cues, and body-first settling before any emotional or cognitive processing.',
+    'Creative angle: social reconnection — gently rebuild bridges after withdrawal; short prompts for reaching out, receiving support, and feeling less invisible.',
+  ],
+  anxiety: [
+    'Creative angle: interoceptive awareness — tune into the body\'s early anxiety signals (tight chest, shallow breath, jaw tension) before they escalate beyond regulation.',
+    'Creative angle: safety signal training — build a concrete, personal bank of genuine safety cues the user can access during anxious moments.',
+    'Creative angle: cognitive defusion — create distance between self and anxious thoughts using ACT-style language; thoughts are weather, not facts.',
+    'Creative angle: discomfort tolerance building — reframe uncertainty as survivable; include graduated exposure to ambiguity across the worksheet.',
+    'Creative angle: anticipatory anxiety — specifically for the anxious lead-up before events, not during; focus on pre-exposure preparation and prediction accuracy.',
+    'Creative angle: physical regulation first — all body-based tools (breath, cold, movement) before any cognitive restructuring; regulate before you reason.',
+    'Creative angle: avoidance cycle interruption — gently confront the avoidance patterns that maintain anxiety over time; small courage prompts throughout.',
+    'Creative angle: catastrophe de-escalation — walk through worst-case scenarios step by step until reaching their actual manageable, survivable core.',
+    'Creative angle: present-moment anchoring — sensory and grounding prompts woven throughout; bring attention back to now rather than the imagined future.',
+  ],
+  social: [
+    'Creative angle: attachment security building — help the user build a sense of social safety and an internal secure base before pushing toward connection goals.',
+    'Creative angle: rejection inoculation — prepare for and normalize the experience of rejection as survivable, non-defining, and a sign of putting yourself out there.',
+    'Creative angle: social energy accounting — teach explicit energy budget math; help the user plan social commitments without over-extending and crashing.',
+    'Creative angle: vulnerability calibration — map self-disclosure levels to relationship depth; match openness to context and relationship stage intentionally.',
+    'Creative angle: post-conflict repair and reconnection — tools for re-engaging after social misses, unwanted withdrawals, or unresolved tension.',
+    'Creative angle: assertiveness spectrum — from passive to assertive (not aggressive); concrete language for owning preferences, limits, and needs without apology.',
+    'Creative angle: masking reduction — reduce the performance cost of socializing; prompts for gentle authenticity and presence instead of rehearsed performance.',
+    'Creative angle: script scaffolding as training wheels — pre-built language to borrow now, internalize over time, and eventually no longer need.',
+  ],
+  human: [
+    'Creative angle: second-order thinking — for every plan or goal, ask what happens next and what happens after that; surface unintended consequences early.',
+    'Creative angle: energy management over time management — schedule based on cognitive and emotional energy states, not just clock hours or task count.',
+    'Creative angle: decision fatigue elimination — pre-decide recurring choices, reduce daily options, automate defaults; protect decision bandwidth for high-stakes calls.',
+    'Creative angle: anti-perfectionism — optimize explicitly for done and shipped rather than ideal; distinguish between good-enough decisions and decisions that truly matter.',
+    'Creative angle: momentum over motivation — design this tool to run on habit loops and environmental triggers rather than willpower and inspiration.',
+    'Creative angle: sustainable long-game pace — performance over months and years requires rest as part of the output equation; build in recovery and maintenance.',
+    'Creative angle: constraints as creative fuel — limited time, limited resources, and hard deadlines produce better decisions and cleaner prioritization than open-ended work.',
+  ],
+  techie: [
+    'Creative angle: cognitive load management — externalize everything possible; protect working memory for actual problem-solving rather than tracking and recall.',
+    'Creative angle: flow state engineering — design sessions explicitly for deep work; eliminate context switching, interruptions, and under-defined goals ruthlessly.',
+    'Creative angle: blameless systems thinking — focus on process failures and system conditions, not personal failures; ask what in the environment allowed this to happen.',
+    'Creative angle: psychological safety in teams — build the concrete conditions where people can speak up, admit mistakes, surface risks, and grow without fear.',
+    'Creative angle: intentional technical debt — make debt conscious, documented, and time-boxed rather than accidental; include explicit trade-off reasoning.',
+    'Creative angle: shipping as craft — define done clearly, ship it, learn from users; iteration and real feedback beats waiting for an imagined perfect version.',
+    'Creative angle: async-first communication — optimize for written decisions, documented reasoning, and minimal synchronous meetings; respect deep work time.',
+  ],
+};
+
+// Appended to every prompt to override the AI's tendency to echo hardcoded template text.
+const UNIQUENESS_DIRECTIVE = `
+
+UNIQUENESS REQUIREMENT — READ THIS CAREFULLY:
+The JSON template above contains placeholder text values (item strings, subtitles, affirmations, descriptions). Treat ALL of them as structural scaffolding only — do NOT echo them back.
+Replace every text value with freshly written content that is specific to the creative angle above AND the variation selected.
+Ask yourself: "Would a default, uncreative version of this worksheet include this exact item?" — if yes, rewrite it.
+The buyer should receive something that feels purposefully designed around a specific philosophy, not a generic mass-produced template.
+Return ONLY the raw JSON — no markdown fences, no commentary.`;
+
 const BEST_QUALITY_TEMPLATE_INSTRUCTIONS = `
 Quality template: BEST_QUALITY
-- Keep output practical and buyer-usable, not motivational filler.
+
+STRUCTURE:
 - Preserve the exact JSON shape requested above. Do not add extra top-level keys.
-- Use specific, human-sounding labels (never generic names like "Section 1", "Stuff", or "Notes").
-- Ensure strong guidance by including clear instructions or guided prompts or actionable numbered steps.
-- If sections are present, provide at least 3 sections with at least 3 distinct items each.
-- Avoid repeated items or near-duplicate lines.
-- Include a meaningful closing line (affirmation/reminder/note/after_instruction) that helps the buyer use the worksheet.
+- If sections are present, include at least 3 sections with at least 4 distinct items each.
+- Every section MUST include a "description" field: 10-35 words explaining what this section is for and how the buyer should fill it in. Never leave description empty or null.
+- Avoid repeated items or near-duplicate lines across sections.
+
+CONTENT DEPTH:
+- Items must be specific and actionable — not vague placeholders like "Habit 1: ___" unless the product is explicitly a fill-in tracker.
+- Each item should give the buyer enough to act on immediately without needing extra explanation.
+- Instructions or guidance text must be at least 2 full sentences that tell the buyer exactly what to do and why it helps.
+
+LANGUAGE & TONE:
+- Use specific, human-sounding labels. Never use generic names like "Section 1", "Stuff", "Notes", "Misc", or "Other".
+- For mental health and neurodivergent niches (ADHD, MDD, Anxiety, Social): use compassionate, non-judgmental, trauma-informed language. Avoid "should", "must", "you need to", or language that implies failure. Validate difficulty.
+- For mental health products: explicitly name the evidence-based framework being used where applicable (e.g. CBT, DBT, executive function theory, Pomodoro, SMART goals, 5-4-3-2-1 grounding, box breathing). This increases buyer trust.
+- For professional/productivity niches (Techie, General): use precise, confident, outcome-focused language.
+
+CLOSING LINE:
+- The affirmation/reminder/note/after_instruction MUST be a complete, specific sentence of at least 10 words.
+- It must be relevant to THIS product specifically — not a generic cheerleader line like "You can do it!" or "Keep going!".
+- It should help the buyer understand WHY this tool matters for their life or situation.
 `;
 
 export function getContentPrompt(
@@ -143,25 +235,69 @@ Make it practical, evidence-based, compassionate, and actionable. No markdown, j
     ? `\n\nContent variation to apply — ${variation.label}: ${variation.instruction}\nAdapt the subtitle, section names, descriptions, items, and affirmation to reflect this variation. Keep the exact same JSON field names and structure — only the text content should change.`
     : '';
 
+  // Pick a random creative angle for this niche — the primary source of genuine variation.
+  // This runs on every generation so two calls with identical inputs still produce different content.
+  const anglePool = CREATIVE_ANGLES[nicheId] ?? CREATIVE_ANGLES['human'] ?? [];
+  const angle = anglePool.length ? anglePool[Math.floor(Math.random() * anglePool.length)] : '';
+  const anglePrefix = angle ? `${angle}\n\n` : '';
+
   if (qualityTemplateId === 'best-quality') {
-    return `${prompt}${variationInstruction}\n${BEST_QUALITY_TEMPLATE_INSTRUCTIONS}`;
+    return `${anglePrefix}${prompt}${variationInstruction}\n${BEST_QUALITY_TEMPLATE_INSTRUCTIONS}${UNIQUENESS_DIRECTIVE}`;
   }
 
-  return `${prompt}${variationInstruction}`;
+  return `${anglePrefix}${prompt}${variationInstruction}${UNIQUENESS_DIRECTIVE}`;
 }
 
 // SEO keyword banks per niche for stronger Etsy search ranking
-const NICHE_SEO_KEYWORDS: Record<string, string> = {
-  adhd: 'ADHD planner, ADHD printable, executive function, neurodivergent planner, ADHD tools, focus planner, dopamine, time management ADHD',
-  mdd: 'mental health journal, depression journal, mood tracker printable, self care planner, therapy worksheet, mental wellness, gratitude journal',
-  anxiety: 'anxiety relief printable, CBT worksheet, mental health printable, grounding exercise, anxiety journal, calm down kit, therapy tools',
-  social: 'social skills printable, conversation cards, social anxiety tools, boundary setting, communication printable, social script',
-  human: 'printable planner, productivity planner, life planner, goal setting worksheet, habit tracker, organization printable, daily planner',
-  techie: 'developer planner, software engineer printable, agile sprint planner, code review checklist, programmer gift, tech productivity',
+const NICHE_SEO_KEYWORDS: Record<string, string[]> = {
+  adhd: [
+    'ADHD planner, ADHD printable, executive function, neurodivergent planner, ADHD tools, focus planner, dopamine, time management ADHD',
+    'ADHD daily planner, focus tracker printable, executive function worksheet, neurodivergent tools, task initiation, time blindness ADHD',
+    'ADHD productivity printable, dopamine menu, body doubling worksheet, hyperfocus planner, ADHD adult printable, attention tracker',
+  ],
+  mdd: [
+    'mental health journal, depression journal, mood tracker printable, self care planner, therapy worksheet, mental wellness, gratitude journal',
+    'depression recovery printable, daily mood check in, self compassion journal, mental health printable, behavioral activation worksheet',
+    'therapy prep worksheet, gratitude printable, small wins tracker, mental health planner, self care menu printable, mood log',
+  ],
+  anxiety: [
+    'anxiety relief printable, CBT worksheet, mental health printable, grounding exercise, anxiety journal, calm down kit, therapy tools',
+    'grounding techniques printable, box breathing guide, anxiety tracker, worry journal, CBT thought record, anxiety coping tools',
+    'calm down kit printable, panic attack tools, anxiety relief worksheet, mindfulness printable, safety plan template, stress log',
+  ],
+  social: [
+    'social skills printable, conversation cards, social anxiety tools, boundary setting, communication printable, social script',
+    'conversation starters printable, social battery tracker, boundary scripts, small talk guide, social skills worksheet for adults',
+    'social anxiety tools, meeting prep template, email templates printable, assertiveness worksheet, social goals printable',
+  ],
+  human: [
+    'printable planner, productivity planner, life planner, goal setting worksheet, habit tracker, organization printable, daily planner',
+    'weekly planner printable, goal planner, habit tracker template, time management printable, life organization printable, routine planner',
+    'daily routine printable, productivity worksheet, goal setting template, planner insert printable, bullet journal printable, task tracker',
+  ],
+  techie: [
+    'developer planner, software engineer printable, agile sprint planner, code review checklist, programmer gift, tech productivity',
+    'sprint planning template, code review checklist, bug triage sheet, standup notes printable, retrospective template, engineering planner',
+    'software engineer gift, developer productivity printable, system design notes, learning roadmap template, side project tracker',
+  ],
 };
 
-export function getEtsyListingPrompt(nicheId: string, productTypeId: string, productName: string): string {
-  const nicheKeywords = NICHE_SEO_KEYWORDS[nicheId] || 'printable, digital download, worksheet';
+const PAGE_SIZE_COPY: Record<string, string> = {
+  letter: 'US Letter (8.5\" x 11\") PDF format, ready to print at home or at any print shop',
+  a4: 'A4 (210mm x 297mm) PDF format, ready to print at home or at any print shop',
+  a5: 'A5 (148mm x 210mm) PDF format — compact journal size, print at home or at a local print shop',
+};
+
+export function getEtsyListingPrompt(
+  nicheId: string,
+  productTypeId: string,
+  productName: string,
+  pageSize?: string,
+): string {
+  const keywordSets = NICHE_SEO_KEYWORDS[nicheId] ?? ['printable, digital download, worksheet'];
+  // Rotate keyword set so repeated calls for the same niche get different focus.
+  const nicheKeywords = keywordSets[Math.floor(Math.random() * keywordSets.length)];
+  const sizeCopy = PAGE_SIZE_COPY[pageSize || 'letter'] ?? PAGE_SIZE_COPY['letter'];
 
   return `Create a highly SEO-optimized Etsy listing for a printable digital download product.
 
@@ -173,7 +309,7 @@ High-value niche keywords to incorporate: ${nicheKeywords}
 SEO rules:
 - Title: exactly under 140 chars, front-load the most searched keywords, include "printable" and "digital download", natural language
 - Tags: EXACTLY 13 tags, each tag under 20 characters, use high-search-volume Etsy keywords, mix broad (e.g. "printable planner") and specific (e.g. "ADHD daily planner") terms
-- Description: 200-350 words. Opening sentence hooks with main keyword. Explain what it is, who it is for, exactly what is included, how to use it. Mention: instant digital download, PDF format, US Letter + A4 sizes included, print at home or at a print shop. Use natural keyword placement. End with a warm call to action.
+- Description: 200-350 words. Opening sentence hooks with main keyword. Explain what it is, who it is for, exactly what is included, how to use it. Mention: instant digital download, ${sizeCopy}, print at home or at a print shop. Use natural keyword placement. End with a warm call to action.
 - Category: return a category_path and taxonomy_id suitable for Etsy digital printables.
 
 Return ONLY valid JSON (no markdown, no code blocks):

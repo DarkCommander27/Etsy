@@ -27,8 +27,8 @@ export async function GET() {
   try {
     const history = getHistory();
     return NextResponse.json({ history });
-  } catch (err) {
-    return NextResponse.json({ history: [], error: String(err) });
+  } catch {
+    return NextResponse.json({ error: 'Failed to load history.' }, { status: 500 });
   }
 }
 

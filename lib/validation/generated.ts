@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { getNicheById, getProductById, type Niche, type ProductType } from '@/lib/niches';
 
 const shortText = (max: number) => z.string().trim().min(1).max(max);
 
@@ -85,7 +86,7 @@ const listingImageRequestSchema = z.object({
   nicheId: shortText(40),
   productTypeId: shortText(80),
   title: shortText(140),
-  imageCount: z.number().int().min(1).max(5).default(5),
+  imageCount: z.number().int().min(1).max(3).default(3),
   colorScheme: z.object({
     name: z.string().trim().max(80).optional(),
     primary: hexColorSchema,
@@ -100,7 +101,7 @@ const listingImageRequestSchema = z.object({
 
 const listingImageMetaSchema = z.object({
   id: shortText(120),
-  rank: z.number().int().min(1).max(5),
+  rank: z.number().int().min(1).max(3),
   filename: shortText(180),
   url: shortText(320),
   width: z.number().int().min(1),
@@ -109,12 +110,24 @@ const listingImageMetaSchema = z.object({
   createdAt: shortText(80),
 });
 
+const productSelectionSchema = z.object({
+  nicheId: shortText(40),
+  productTypeId: shortText(80),
+  customTitle: z.string().trim().max(140).optional(),
+});
+
+const etsyListingGenerationRequestSchema = productSelectionSchema.extend({
+  productName: shortText(140),
+});
+
 export type ProductContent = z.infer<typeof productContentSchema>;
 export type EtsyListingDraft = z.infer<typeof etsyListingSchema>;
 export type ListingImageRequest = z.infer<typeof listingImageRequestSchema>;
 export type ListingImageMeta = z.infer<typeof listingImageMetaSchema>;
+export type ProductSelectionRequest = z.infer<typeof productSelectionSchema>;
+export type EtsyListingGenerationRequest = z.infer<typeof etsyListingGenerationRequestSchema>;
 
-export const PRODUCT_QUALITY_MIN_SCORE = 75;
+export const PRODUCT_QUALITY_MIN_SCORE = 82;
 
 export interface ValidationResult<T> {
   success: boolean;
@@ -129,6 +142,24 @@ function formatIssues(error: z.ZodError): string[] {
     const path = issue.path.length ? `${issue.path.join('.')}: ` : '';
     return `${path}${issue.message}`;
   });
+}
+
+function resolveProductSelection(nicheId: string, productTypeId: string): {
+  niche?: Niche;
+  product?: ProductType;
+} {
+  const niche = getNicheById(nicheId);
+  const product = niche ? getProductById(nicheId, productTypeId) : undefined;
+  return { niche, product };
+}
+
+function getInvalidProductSelectionIssues(nicheId: string, productTypeId: string): string[] {
+  const { niche, product } = resolveProductSelection(nicheId, productTypeId);
+  if (niche && product) {
+    return [];
+  }
+
+  return ['Invalid nicheId or productTypeId.'];
 }
 
 function looksLikeRefusal(raw: string): boolean {
@@ -215,6 +246,22 @@ function getProductUsabilityIssues(content: ProductContent): string[] {
     'best seller',
     'lorem ipsum',
     'blah blah',
+    'placeholder',
+    'you got this',
+    'keep going',
+    'believe in yourself',
+    'you can do it',
+    'take care of yourself',
+    'be your best self',
+    'discover your potential',
+    'unlock your potential',
+    'transform your life',
+    'level up your',
+    'game changer',
+    'amazing',
+    'awesome',
+    'fantastic',
+    'explore more',
   ];
 
   if (genericNames.has(title)) {
@@ -238,6 +285,20 @@ function getProductUsabilityIssues(content: ProductContent): string[] {
   if (content.sections?.length && sectionDescriptions.filter(Boolean).length === 0) {
     issues.push('Structured sections need brief descriptions for clarity.');
   }
+  // Penalise when most sections are missing descriptions — we now render them
+  const sectionsWithDesc = sectionDescriptions.filter((d) => d.length >= 8).length;
+  if ((content.sections?.length || 0) >= 3 && sectionsWithDesc / (content.sections?.length || 1) < 0.5) {
+    issues.push('More than half the sections are missing descriptions, which leaves buyers without context.');
+  }
+
+  // Filler affirmations ("You can do it!", "Keep going!") add no value
+  const closingText = normalizeQualityText(
+    String(content.affirmation || content.reminder || content.note || content.after_instruction || '')
+  );
+  const closingWordCount = closingText.split(/\s+/).filter(Boolean).length;
+  if (closingText && closingWordCount < 8) {
+    issues.push('Closing affirmation/note is too short to be meaningful — write a complete, specific sentence.');
+  }
 
   const textUnits = [
     ...(content.sections || []).flatMap((section) => section.items || []),
@@ -245,6 +306,28 @@ function getProductUsabilityIssues(content: ProductContent): string[] {
     ...((content.steps || []).map((step) => step.instruction)),
     ...((content.columns || []).map((column) => `${column.name} ${column.prompt}`)),
   ].map((value) => normalizeQualityText(String(value || ''))).filter(Boolean);
+
+  // Detect bare placeholder labels using original text (before normalization).
+  // "Win #1:", "Task:", "Goal 2:", "Step 2: ___" are structural skeletons, not content.
+  const rawItems = [
+    ...(content.sections || []).flatMap((section) => section.items || []),
+    ...(content.prompts || []),
+    ...((content.steps || []).map((step) => step.instruction)),
+    ...((content.columns || []).map((column) => `${column.name} ${column.prompt}`)),
+  ].map((value) => String(value || '').trim()).filter(Boolean);
+
+  const isPlaceholderLabel = (item: string): boolean =>
+    // "Win #1:", "Task:", "Category Name:" — label ending in colon with nothing after
+    /^[A-Za-z][A-Za-z0-9\s#*()\-]{0,40}:\s*$/.test(item) ||
+    // Pure blank line / underscores only
+    /^[_\s\-]+$/.test(item);
+
+  const placeholderCount = rawItems.filter(isPlaceholderLabel).length;
+  if (rawItems.length >= 4 && placeholderCount / rawItems.length > 0.3) {
+    issues.push(
+      `${placeholderCount} of ${rawItems.length} items are bare placeholder labels — every item must be a complete, actionable prompt.`
+    );
+  }
 
   const uniqueUnits = new Set(textUnits);
   if (textUnits.length >= 6 && uniqueUnits.size / textUnits.length < 0.7) {
@@ -258,7 +341,7 @@ function getProductUsabilityIssues(content: ProductContent): string[] {
     (content.columns?.length || 0) +
     (content.categories?.length || 0) +
     (content.time_blocks?.length || 0);
-  if (actionableCount < 6) {
+  if (actionableCount < 10) {
     issues.push('Content does not include enough usable elements for a premium printable.');
   }
 
@@ -429,8 +512,9 @@ function collectListingWarnings(listing: EtsyListingDraft): string[] {
     warnings.push('Listing has fewer than 13 tags, which reduces Etsy search coverage.');
   }
 
-  if (listing.description.length < 200 || listing.description.length > 350) {
-    warnings.push('Listing description is outside the target 200-350 word-quality range.');
+  const descWordCount = listing.description.split(/\s+/).filter(Boolean).length;
+  if (descWordCount < 200 || descWordCount > 350) {
+    warnings.push('Listing description is outside the target 200-350 word range.');
   }
 
   if (!description.includes('instant digital download')) {
@@ -534,6 +618,73 @@ export function evaluateNichePublishChecklist(
 
   if (/(budget|goal|fitness|habit)/.test(key) && !hasGuidance) {
     issues.push('Goal and tracking products should include guidance for daily/weekly use.');
+  }
+
+  // Grounding, breathing, and sensory exercises must deliver step-by-step guidance
+  if (/(grounding|breathing|box.breath|5.4.3|sensory)/.test(key)) {
+    const stepCount = content.steps?.length || totalSectionItems;
+    if (stepCount < 3) {
+      issues.push('Grounding/breathing exercises must include at least 3 concrete steps.');
+    }
+    if (!hasGuidance) {
+      issues.push('Grounding/breathing exercises should include clear instructions for use.');
+    }
+  }
+
+  // Safety plans and crisis resources need substantial structured content
+  if (/(safety.plan|crisis|emergency)/.test(key)) {
+    if (sectionCount < 4) {
+      issues.push('Safety-plan products must include at least 4 structured sections.');
+    }
+    if (totalSectionItems < 10) {
+      issues.push('Safety-plan products need at least 10 total items across all sections.');
+    }
+  }
+
+  // Scripted or conversational products (social scripts, email templates, conversation starters)
+  if (/(script|starters?|conversation|small.talk|email.template|boundary)/.test(key)) {
+    if (sectionCount < 3) {
+      issues.push('Script/conversation products should include at least 3 categorised sections.');
+    }
+    if (totalSectionItems < 12) {
+      issues.push('Script/conversation products need at least 12 example lines/scripts to be useful.');
+    }
+  }
+
+  // Social battery, mood check-ins, and energy tracking
+  if (/(social.battery|battery|mood.check|checkin|check.in)/.test(key)) {
+    if (!sectionCount && !categoryCount) {
+      issues.push('Social-battery/mood check-in products need structured sections or rating categories.');
+    }
+  }
+
+  // Micro-tasks, rituals, routines, and focus tools need steps or sections
+  if (/(micro.task|micro|ritual|routine|focus.timer|focus.block)/.test(key)) {
+    const stepCount = content.steps?.length || totalSectionItems;
+    if (stepCount < 4) {
+      issues.push('Ritual/micro-task/focus products need at least 4 steps or items to be actionable.');
+    }
+  }
+
+  // Vision boards, retros, system design, and ideation products need structured sections
+  if (/(vision.board|vision|retro|retrospective|system.design|design.doc)/.test(key)) {
+    if (sectionCount < 3) {
+      issues.push('Vision/retro/design products must include at least 3 structured sections.');
+    }
+  }
+
+  // Code review, bug triage, and technical checklists need sufficient items
+  if (/(code.review|bug.triage|triage|code.checklist)/.test(key)) {
+    if (sectionCount < 2 && totalSectionItems < 8) {
+      issues.push('Technical checklist products should include at least 2 sections with 8 or more total items.');
+    }
+  }
+
+  // Post-social recovery and "what I can control" products need reflective guidance
+  if (/(recovery|what.i.can|can.control|recharge)/.test(key)) {
+    if (!sectionCount && !hasGuidance) {
+      issues.push('Recovery/control products need structured sections or prompts to guide reflection.');
+    }
   }
 
   return [...new Set(issues)];
@@ -737,6 +888,74 @@ export function validateListingImageRequest(payload: unknown): ValidationResult<
       warnings: [],
       issues: formatIssues(result.error),
       error: 'Listing image request is incomplete or invalid.',
+    };
+  }
+
+  const issues = getInvalidProductSelectionIssues(result.data.nicheId, result.data.productTypeId);
+  if (issues.length > 0) {
+    return {
+      success: false,
+      warnings: [],
+      issues,
+      error: 'Listing image request references an unknown niche or product type.',
+    };
+  }
+
+  return {
+    success: true,
+    data: result.data,
+    warnings: [],
+    issues: [],
+  };
+}
+
+export function validateProductSelectionRequest(payload: unknown): ValidationResult<ProductSelectionRequest> {
+  const result = productSelectionSchema.safeParse(payload);
+  if (!result.success) {
+    return {
+      success: false,
+      warnings: [],
+      issues: formatIssues(result.error),
+      error: 'nicheId and productTypeId are required.',
+    };
+  }
+
+  const issues = getInvalidProductSelectionIssues(result.data.nicheId, result.data.productTypeId);
+  if (issues.length > 0) {
+    return {
+      success: false,
+      warnings: [],
+      issues,
+      error: 'Invalid nicheId or productTypeId.',
+    };
+  }
+
+  return {
+    success: true,
+    data: result.data,
+    warnings: [],
+    issues: [],
+  };
+}
+
+export function validateEtsyListingGenerationRequest(payload: unknown): ValidationResult<EtsyListingGenerationRequest> {
+  const result = etsyListingGenerationRequestSchema.safeParse(payload);
+  if (!result.success) {
+    return {
+      success: false,
+      warnings: [],
+      issues: formatIssues(result.error),
+      error: 'nicheId, productTypeId, and productName are required.',
+    };
+  }
+
+  const issues = getInvalidProductSelectionIssues(result.data.nicheId, result.data.productTypeId);
+  if (issues.length > 0) {
+    return {
+      success: false,
+      warnings: [],
+      issues,
+      error: 'Invalid nicheId or productTypeId.',
     };
   }
 

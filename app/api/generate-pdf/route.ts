@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { generatePDF, PDFOptions } from '@/lib/pdf/generator';
 import { addHistoryEntry } from '@/lib/db';
-import { validateProductContent } from '@/lib/validation/generated';
+import { validateProductContent, validateProductSelectionRequest } from '@/lib/validation/generated';
 import { saveOutputFolder } from '@/lib/output';
 
 export async function POST(req: NextRequest) {
@@ -20,6 +20,17 @@ export async function POST(req: NextRequest) {
     if (title !== undefined && (typeof title !== 'string' || title.length > 500)) {
       return NextResponse.json({ error: 'title must be a string under 500 characters.' }, { status: 400 });
     }
+
+    if (nicheId !== undefined || productTypeId !== undefined) {
+      const selection = validateProductSelectionRequest({ nicheId, productTypeId });
+      if (!selection.success) {
+        return NextResponse.json(
+          { error: selection.error, details: selection.issues },
+          { status: 400 }
+        );
+      }
+    }
+
     const validated = validateProductContent(content);
     if (!validated.success) {
       return NextResponse.json({ error: validated.error, details: validated.issues }, { status: 422 });
@@ -41,6 +52,7 @@ export async function POST(req: NextRequest) {
         id: crypto.randomUUID(), nicheId, productTypeId, title,
         colorScheme: colorScheme?.id || 'default', pageSize: pageSize || 'letter',
         createdAt: new Date().toISOString(),
+        content: validated.data,
       });
     } catch {
       // History write failure should never block the PDF response

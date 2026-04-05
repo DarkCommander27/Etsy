@@ -4,21 +4,37 @@ import {
   PRODUCT_QUALITY_MIN_SCORE,
   evaluateNichePublishChecklist,
   evaluateProductQuality,
+  validateEtsyListingGenerationRequest,
   validateEtsyListing,
   validateListingImageRequest,
+  validateProductSelectionRequest,
 } from './generated';
 
 describe('evaluateProductQuality', () => {
   it('scores high-quality printable content above publish threshold', () => {
     const quality = evaluateProductQuality({
       title: 'Weekly Meal Planner',
-      subtitle: 'Plan a week of simple meals',
-      instructions: 'Pick meals, fill list, prep once.',
+      subtitle: 'Plan a week of simple, stress-free meals',
+      instructions: 'Fill out each section on Sunday and shop once for the whole week.',
       sections: [
-        { name: 'Breakfast', description: 'Start strong', items: ['Egg bites', 'Oatmeal', 'Greek yogurt'] },
-        { name: 'Lunch', description: 'Easy options', items: ['Chicken salad', 'Wraps', 'Rice bowls'] },
+        {
+          name: 'Breakfast',
+          description: 'Start each day with a nourishing, no-stress meal',
+          items: ['Egg bites baked with spinach and feta', 'Overnight oats with chia and berries', 'Greek yogurt bowl with granola and honey'],
+        },
+        {
+          name: 'Lunch',
+          description: 'Quick midday meals you can prep the night before',
+          items: ['Chicken salad wrap with cucumber and dill', 'Brown rice bowl with roasted vegetables', 'Leftover pasta with olive oil and herbs'],
+        },
+        {
+          name: 'Dinner',
+          description: 'Satisfying dinners that reheat well for next-day leftovers',
+          items: ['Sheet pan salmon with asparagus and lemon', 'Stir-fry tofu with broccoli and sesame sauce', 'Slow cooker chili with beans and bell peppers'],
+        },
       ],
-      affirmation: 'Consistency beats perfection.',
+      prompts: ['Write your grocery list for the week based on these meals.'],
+      affirmation: 'Planning your meals ahead saves time, money, and precious mental energy every single day.',
     });
 
     expect(quality.score).toBeGreaterThanOrEqual(PRODUCT_QUALITY_MIN_SCORE);
@@ -222,7 +238,7 @@ describe('validateListingImageRequest', () => {
       nicheId: 'adhd',
       productTypeId: 'daily-planner',
       title: 'ADHD Daily Planner',
-      imageCount: 5,
+      imageCount: 3,
       colorScheme: {
         name: 'Calm Blue',
         primary: '#2563EB',
@@ -233,7 +249,30 @@ describe('validateListingImageRequest', () => {
     });
 
     expect(result.success).toBe(true);
-    expect(result.data?.imageCount).toBe(5);
+    expect(result.data?.imageCount).toBe(3);
+  });
+
+  it('rejects requests that ask for more than 3 images', () => {
+    const result = validateListingImageRequest({
+      nicheId: 'adhd',
+      productTypeId: 'daily-planner',
+      title: 'ADHD Daily Planner',
+      imageCount: 4,
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBe('Listing image request is incomplete or invalid.');
+  });
+
+  it('rejects an unknown niche or product type', () => {
+    const result = validateListingImageRequest({
+      nicheId: 'unknown',
+      productTypeId: 'daily-planner',
+      title: 'ADHD Daily Planner',
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBe('Listing image request references an unknown niche or product type.');
   });
 
   it('rejects invalid color values', () => {
@@ -248,5 +287,57 @@ describe('validateListingImageRequest', () => {
 
     expect(result.success).toBe(false);
     expect(result.error).toBe('Listing image request is incomplete or invalid.');
+  });
+});
+
+describe('validateProductSelectionRequest', () => {
+  it('accepts a known niche and product type', () => {
+    const result = validateProductSelectionRequest({
+      nicheId: 'adhd',
+      productTypeId: 'daily-planner',
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.data?.nicheId).toBe('adhd');
+  });
+
+  it('rejects missing selection fields', () => {
+    const result = validateProductSelectionRequest({});
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBe('nicheId and productTypeId are required.');
+  });
+
+  it('rejects unknown niche and product combinations', () => {
+    const result = validateProductSelectionRequest({
+      nicheId: 'adhd',
+      productTypeId: 'does-not-exist',
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBe('Invalid nicheId or productTypeId.');
+  });
+});
+
+describe('validateEtsyListingGenerationRequest', () => {
+  it('requires productName in addition to selection fields', () => {
+    const result = validateEtsyListingGenerationRequest({
+      nicheId: 'adhd',
+      productTypeId: 'daily-planner',
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBe('nicheId, productTypeId, and productName are required.');
+  });
+
+  it('accepts a valid Etsy listing generation request', () => {
+    const result = validateEtsyListingGenerationRequest({
+      nicheId: 'adhd',
+      productTypeId: 'daily-planner',
+      productName: 'ADHD Daily Planner Printable',
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.data?.productName).toBe('ADHD Daily Planner Printable');
   });
 });

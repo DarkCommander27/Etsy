@@ -1,12 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { generatePKCE, savePKCE } from '@/lib/etsy/client';
+import { generatePKCE, getConfiguredEtsyApiKey, saveConfiguredEtsyApiKey, savePKCE } from '@/lib/etsy/client';
 
 export async function GET(req: NextRequest) {
-  const apiKey = process.env.ETSY_API_KEY || '';
+  const providedApiKey = String(req.nextUrl.searchParams.get('apiKey') || '').trim();
+  if (providedApiKey) {
+    saveConfiguredEtsyApiKey(providedApiKey);
+  }
+  const apiKey = providedApiKey || getConfiguredEtsyApiKey();
 
   if (!apiKey) {
     return NextResponse.redirect(
-      `${req.nextUrl.origin}/settings?etsy_error=${encodeURIComponent('Etsy API key not configured. Add ETSY_API_KEY to .env.local or enter it in Settings.')}`
+      `${req.nextUrl.origin}/settings?etsy_error=${encodeURIComponent('Etsy API key not configured. Add ETSY_API_KEY to .env.local or enter it in Settings before connecting.')}`
     );
   }
 

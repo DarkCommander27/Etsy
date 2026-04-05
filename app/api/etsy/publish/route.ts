@@ -1,44 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
-import { createListing, uploadListingFile, uploadListingImage } from '@/lib/etsy/client';
+import { createListing, getConfiguredEtsyApiKey, uploadListingFile, uploadListingImage } from '@/lib/etsy/client';
 import { generatePDF, PDFOptions } from '@/lib/pdf/generator';
 import { saveOutputFolder } from '@/lib/output';
+import { getPublishIdempotency, setPublishIdempotency } from '@/lib/storage';
 import { PRODUCT_QUALITY_MIN_SCORE, evaluateNichePublishChecklist, evaluateProductQuality, validateEtsyListing, validateListingImageMeta, validateProductContent } from '@/lib/validation/generated';
 
-const DATA_DIR = path.join(process.cwd(), 'data');
-const IDEMPOTENCY_FILE = path.join(DATA_DIR, 'publish-idempotency.json');
 const IDEMPOTENCY_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const IDEMPOTENCY_MAX_ENTRIES = 2000;
-
-type IdempotencyStore = Record<string, {
-  listing_id: number;
-  createdAt: string;
-}>;
-
-function readIdempotencyStore(): IdempotencyStore {
-  try {
-    if (!fs.existsSync(IDEMPOTENCY_FILE)) return {};
-    const parsed = JSON.parse(fs.readFileSync(IDEMPOTENCY_FILE, 'utf-8')) as IdempotencyStore;
-    const now = Date.now();
-    return Object.fromEntries(
-      Object.entries(parsed).filter(([, value]) => {
-        const ts = Date.parse(value.createdAt);
-        return Number.isFinite(ts) && now - ts <= IDEMPOTENCY_TTL_MS;
-      })
-    );
-  } catch {
-    return {};
-  }
-}
-
-function writeIdempotencyStore(store: IdempotencyStore) {
-  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-  const entries = Object.entries(store)
-    .sort((a, b) => Date.parse(b[1].createdAt) - Date.parse(a[1].createdAt))
-    .slice(0, IDEMPOTENCY_MAX_ENTRIES);
-  fs.writeFileSync(IDEMPOTENCY_FILE, JSON.stringify(Object.fromEntries(entries), null, 2));
-}
 
 function resolvePublicPath(url: string): string | null {
   if (!url.startsWith('/')) return null;
@@ -46,7 +16,7 @@ function resolvePublicPath(url: string): string | null {
   const candidate = path.join(process.cwd(), 'public', cleaned);
   const normalized = path.normalize(candidate);
   const publicRoot = path.normalize(path.join(process.cwd(), 'public'));
-  if (!normalized.startsWith(publicRoot)) return null;
+  if (!normalized.startsWith(publicRoot + path.sep) && normalized !== publicRoot) return null;
   return normalized;
 }
 
@@ -76,8 +46,7 @@ export async function POST(req: NextRequest) {
     const publishWarnings: string[] = [];
 
     if (idempotencyKey && idempotencyKey.trim().length >= 8) {
-      const store = readIdempotencyStore();
-      const existing = store[idempotencyKey];
+      const existing = getPublishIdempotency(idempotencyKey, IDEMPOTENCY_TTL_MS);
       if (existing) {
         return NextResponse.json({
           listing: { listing_id: existing.listing_id },
@@ -87,9 +56,9 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const effectiveApiKey = process.env.ETSY_API_KEY || '';
+    const effectiveApiKey = getConfiguredEtsyApiKey();
     if (!effectiveApiKey) {
-      return NextResponse.json({ error: 'Etsy API key not configured. Add ETSY_API_KEY to .env.local.' }, { status: 400 });
+      return NextResponse.json({ error: 'Etsy API key not configured. Save it in Settings or add ETSY_API_KEY to .env.local.' }, { status: 400 });
     }
     if (!shopId) {
       return NextResponse.json({ error: 'Etsy Shop ID not configured. Add it in Settings.' }, { status: 400 });
@@ -192,14 +161,13 @@ export async function POST(req: NextRequest) {
       } catch (uploadErr) {
         return NextResponse.json({
           listing,
-          warnings: listingValidation.warnings,
-          warning: `Draft created, but PDF upload failed: ${uploadErr instanceof Error ? uploadErr.message : 'Unknown error'}. Please upload the PDF manually on Etsy.`,
+          warnings: [...listingValidation.warnings, `Draft created, but PDF upload failed: ${uploadErr instanceof Error ? uploadErr.message : 'Unknown error'}. Please upload the PDF manually on Etsy.`],
         });
       }
     }
 
     if (listing.listing_id && Array.isArray(listingImages) && listingImages.length > 0) {
-      for (const image of [...listingImages].sort((a, b) => a.rank - b.rank).slice(0, 5)) {
+      for (const image of [...listingImages].sort((a, b) => a.rank - b.rank).slice(0, 3)) {
         const validImage = validateListingImageMeta(image);
         if (!validImage.success || !validImage.data) {
           publishWarnings.push(`Skipped an invalid generated image payload for rank ${image?.rank || '?'}.`);
@@ -229,12 +197,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (idempotencyKey && idempotencyKey.trim().length >= 8 && listing.listing_id) {
-      const store = readIdempotencyStore();
-      store[idempotencyKey] = {
-        listing_id: listing.listing_id,
-        createdAt: new Date().toISOString(),
-      };
-      writeIdempotencyStore(store);
+      setPublishIdempotency(idempotencyKey, listing.listing_id, IDEMPOTENCY_TTL_MS, IDEMPOTENCY_MAX_ENTRIES);
     }
 
     return NextResponse.json({ listing, warnings: [...listingValidation.warnings, ...publishWarnings] });

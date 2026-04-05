@@ -135,27 +135,43 @@ export function generateProductNameIdeas(input: {
 
   const rootTitle = titleCaseWords(customTitle || product.name);
   const nicheKeywordPool = NICHE_KEYWORDS[nicheId] || [niche.name];
-  const mainNicheKeyword = nicheKeywordPool[0] || niche.name;
-  const secondaryKeyword = nicheKeywordPool[1] || niche.name;
 
-  const rawIdeas = dedupeWords([
-    `${rootTitle} Printable ${mainNicheKeyword} Planner | Instant Digital Download`,
-    `${mainNicheKeyword} ${rootTitle} Template for Adults | Editable ${product.name} PDF`,
-    `${rootTitle} ${secondaryKeyword} Workbook | Printable Therapy-Inspired Digital Download`,
-    `${rootTitle} Toolkit | ${mainNicheKeyword} Checklist + Tracker Printable`,
-    `${mainNicheKeyword} ${product.name} Bundle | Printable ${secondaryKeyword} Planner Pages`,
-    `${rootTitle} Daily Sheet | High-Function ${mainNicheKeyword} Template`,
-    `${secondaryKeyword} ${rootTitle} Journal | Instant Download Printable`,
-    `${rootTitle} for Women & Men | ${mainNicheKeyword} Self-Help Printable PDF`,
-    `${mainNicheKeyword} ${rootTitle} Planner | Simple Printable ${product.name} System`,
-    `${rootTitle} Starter Pack | ${secondaryKeyword} Digital Download Toolkit`,
-  ]);
+  // Cycle through the FULL keyword pool — not just slots 0 and 1 — so every keyword
+  // combination gets represented and results genuinely differ between niches.
+  const kw = (i: number) => nicheKeywordPool[i % nicheKeywordPool.length] || niche.name;
 
-  const scored = rawIdeas
+  // Generate a larger pool of distinct patterns, then score and trim to limit.
+  // Using all 5 keyword positions ensures actual variety across the idea set.
+  const rawIdeas = [
+    `${rootTitle} Printable ${kw(0)} Planner | Instant Digital Download`,
+    `${kw(0)} ${rootTitle} Template for Adults | Editable ${product.name} PDF`,
+    `${rootTitle} ${kw(1)} Workbook | Printable Therapy-Inspired Digital Download`,
+    `${rootTitle} Toolkit | ${kw(0)} Checklist + Tracker Printable`,
+    `${kw(0)} ${product.name} Bundle | Printable ${kw(1)} Planner Pages`,
+    `${rootTitle} Daily Sheet | High-Function ${kw(0)} Template`,
+    `${kw(1)} ${rootTitle} Journal | Instant Download Printable`,
+    `${rootTitle} for Women & Men | ${kw(0)} Self-Help Printable PDF`,
+    `${kw(0)} ${rootTitle} Planner | Simple Printable ${product.name} System`,
+    `${rootTitle} Starter Pack | ${kw(1)} Digital Download Toolkit`,
+    `${kw(2)} ${rootTitle} Printable | ${kw(0)} Planner Digital Download`,
+    `${rootTitle} | ${kw(2)} Worksheet + ${kw(1)} Tracker | Instant PDF`,
+    `${kw(3)} ${rootTitle} Template | ${kw(0)} Printable for Adults`,
+    `Printable ${rootTitle} ${kw(3)} Kit | Instant Digital Download`,
+    `${kw(4)} ${rootTitle} Workbook | ${kw(0)} Digital Planner Pages`,
+    `${rootTitle} ${kw(4)} Bundle | Printable ${kw(2)} System PDF`,
+    `${kw(2)} ${product.name} Printable | ${kw(3)} Template Instant Download`,
+    `${rootTitle} Printable | ${kw(4)} + ${kw(1)} Tracker | Digital PDF`,
+    `${kw(3)} ${kw(0)} ${rootTitle} | Printable Instant Download Worksheet`,
+    `${rootTitle} Digital Download | ${kw(1)} + ${kw(3)} Planner Template`,
+  ];
+
+  const uniqueIdeas = dedupeWords(rawIdeas);
+
+  const scored = uniqueIdeas
     .map((idea) => dedupeWordsInTitle(idea))
     .map((idea) => trimToEtsyTitleLimit(idea))
-    .map((idea) => scoreIdea(idea, mainNicheKeyword))
+    .map((idea) => scoreIdea(idea, kw(0)))
     .sort((a, b) => b.score - a.score || a.title.localeCompare(b.title));
 
-  return scored.slice(0, Math.max(1, Math.min(limit, 12)));
+  return scored.slice(0, Math.max(1, Math.min(limit, 16)));
 }

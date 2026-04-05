@@ -18,7 +18,6 @@ interface Settings {
   ollamaUrl: string;
   ollamaModel: string;
   defaultPageSize: string;
-  defaultColorScheme: string;
   etsyShopId: string;
   etsyApiKey: string;
 }
@@ -32,7 +31,6 @@ const defaults: Settings = {
   ollamaUrl: 'http://localhost:11434',
   ollamaModel: 'llama3',
   defaultPageSize: 'letter',
-  defaultColorScheme: '',
   etsyShopId: '',
   etsyApiKey: '',
 };
@@ -82,7 +80,11 @@ function SettingsContent() {
   function connectEtsy() {
     // Save settings first so shop ID is persisted
     localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
-    window.location.href = '/api/etsy/connect';
+    const url = new URL('/api/etsy/connect', window.location.origin);
+    if (settings.etsyApiKey.trim()) {
+      url.searchParams.set('apiKey', settings.etsyApiKey.trim());
+    }
+    window.location.href = url.toString();
   }
 
   return (
@@ -220,7 +222,7 @@ function SettingsContent() {
               <a href="https://www.etsy.com/developers/register" target="_blank" rel="noopener noreferrer" className="text-indigo-500 hover:underline">
                 etsy.com/developers
               </a>
-              {' '}· Set redirect URI to <code className="bg-slate-100 dark:bg-slate-700 px-1 rounded">http://localhost:3000/api/etsy/callback</code>
+              {' '}· Used for niche research and Etsy OAuth if a server env key is not set. Set redirect URI to <code className="bg-slate-100 dark:bg-slate-700 px-1 rounded">http://localhost:3000/api/etsy/callback</code>
             </p>
           </div>
           <div>

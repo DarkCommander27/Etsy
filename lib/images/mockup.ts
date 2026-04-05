@@ -10,11 +10,9 @@ const MAX_GENERATED_IMAGES = 200;
 const MAX_IMAGE_AGE_MS = 14 * 24 * 60 * 60 * 1000;
 
 const IMAGE_VARIANTS = [
-	'A polished hero mockup featuring the full printable product with clean desk styling.',
-	'A flat-lay composition with warm natural lighting and tasteful stationery props.',
-	'A close-up detail shot emphasizing legibility, typography, and premium print quality.',
-	'A lifestyle scene showing the printable in real use with a minimal, modern workspace.',
-	'A bundle overview composition with layered pages and clear value-focused visual hierarchy.',
+	'Hero shot: the printable product displayed flat with clean white space, bold readable type, high-contrast layout. No props. The page itself is the star.',
+	'Lifestyle flat-lay: the printed page on a real desk alongside a pen, a coffee cup, and a small plant. Warm natural side lighting, styled but not cluttered.',
+	'Close-up detail: extreme crop on one section of the printable — emphasise the typography, structure, and fill-in lines. Show that this is readable and well-designed.',
 ];
 
 function ensureGeneratedDir() {
@@ -69,17 +67,18 @@ function buildPrompt(request: ListingImageRequest, variation: string): string {
 	const product = getProductById(request.nicheId, request.productTypeId);
 	const scheme = request.colorScheme;
 
+	// Describe the printable's purpose so the AI renders plausible content on the page,
+	// not just a generic white rectangle. Colour-mood words work better than raw hex.
+	const colorMood = scheme?.name ? `Color palette: ${scheme.name}.` : '';
+
 	return [
 		'Create a photorealistic Etsy listing image for a digital printable product.',
-		`Product title: ${request.title}.`,
-		`Niche: ${niche?.name || request.nicheId}.`,
-		`Product type: ${product?.name || request.productTypeId}.`,
-		'Design constraints: modern, clean composition, no brand logos, no watermarks, no UI chrome, no spelling errors.',
-		'Output should look like a high-converting Etsy thumbnail for digital downloads.',
-		scheme?.name ? `Color mood: ${scheme.name}.` : '',
-		scheme?.primary ? `Primary color: ${scheme.primary}.` : '',
-		scheme?.secondary ? `Secondary color: ${scheme.secondary}.` : '',
-		scheme?.accent ? `Accent color: ${scheme.accent}.` : '',
+		`Product: "${request.title}" — a ${product?.name || request.productTypeId} for the ${niche?.name || request.nicheId} niche.`,
+		`The printable contains structured fill-in sections, checklists, prompts, or guided reflection relevant to ${niche?.name || 'personal development'}.`,
+		'The page shown must have visible text headers, ruled lines or boxes, and clear sections — it should look like a real, filled-in worksheet, not a blank page.',
+		'Design constraints: modern, clean A4/letter composition, no brand logos, no watermarks, no UI chrome, no spelling errors on the page.',
+		'Output should look like a high-converting Etsy thumbnail for a premium digital download.',
+		colorMood,
 		variation,
 	].filter(Boolean).join(' ');
 }
@@ -130,7 +129,7 @@ export async function generateAndStoreListingImages(request: ListingImageRequest
 
 	const warnings: string[] = [];
 
-	const count = Math.min(request.imageCount || 5, 5);
+  const count = Math.min(request.imageCount || 3, IMAGE_VARIANTS.length);
 	const generatedAt = new Date().toISOString();
 	const batchId = `${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
 	const baseSlug = slugify(request.title || 'listing-image');

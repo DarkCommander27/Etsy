@@ -1,39 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getPKCE, saveTokens, clearPKCE, EtsyTokens } from '@/lib/etsy/client';
-import { sleep } from '@/lib/utils';
-
-const ETSY_TIMEOUT_MS = 20_000;
-
-function isTransient(status: number): boolean {
-  return status === 408 || status === 429 || (status >= 500 && status <= 599);
-}
-
-async function exchangeTokenWithRetry(url: string, body: URLSearchParams): Promise<Response> {
-  const retries = 2;
-  for (let attempt = 0; attempt <= retries; attempt += 1) {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), ETSY_TIMEOUT_MS);
-    try {
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body,
-        signal: controller.signal,
-      });
-
-      if (attempt < retries && isTransient(res.status)) {
-        await sleep(250 * (attempt + 1));
-        continue;
-      }
-
-      return res;
-    } finally {
-      clearTimeout(timeout);
-    }
-  }
-
-  throw new Error('Token exchange failed after retries.');
-}
+import { getConfiguredEtsyApiKey, getPKCE, saveTokens, clearPKCE, fetchWithRetry, EtsyTokens } from '@/lib/etsy/client';
 
 export async function GET(req: NextRequest) {
   const code = req.nextUrl.searchParams.get('code');
@@ -59,10 +25,10 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  const apiKey = process.env.ETSY_API_KEY || '';
+  const apiKey = getConfiguredEtsyApiKey();
   if (!apiKey) {
     return NextResponse.redirect(
-      `${req.nextUrl.origin}/settings?etsy_error=${encodeURIComponent('ETSY_API_KEY not set in .env.local')}`
+      `${req.nextUrl.origin}/settings?etsy_error=${encodeURIComponent('Etsy API key not configured. Save it in Settings or set ETSY_API_KEY in .env.local.')}`
     );
   }
 
@@ -74,7 +40,11 @@ export async function GET(req: NextRequest) {
     code,
     code_verifier: pkce.verifier,
   });
-  const res = await exchangeTokenWithRetry('https://api.etsy.com/v3/public/oauth/token', body);
+  const res = await fetchWithRetry('https://api.etsy.com/v3/public/oauth/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body,
+  }, { retries: 2 });
 
   if (!res.ok) {
     const rawErr = await res.text();
@@ -85,17 +55,17 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  const data = await res.json() as {
-    access_token: string;
-    refresh_token: string;
-    expires_in: number;
-    token_type: string;
-  };
+  const data = await res.json() as Record<string, unknown>;
+  if (typeof data.access_token !== 'string' || typeof data.expires_in !== 'number' || typeof data.refresh_token !== 'string') {
+    return NextResponse.redirect(
+      `${req.nextUrl.origin}/settings?etsy_error=${encodeURIComponent('Token exchange returned an unexpected response. Please try again.')}`
+    );
+  }
   const tokens: EtsyTokens = {
     access_token: data.access_token,
     refresh_token: data.refresh_token,
     expires_at: Date.now() + data.expires_in * 1000,
-    token_type: data.token_type,
+    token_type: typeof data.token_type === 'string' ? data.token_type : 'Bearer',
   };
 
   saveTokens(tokens);

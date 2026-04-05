@@ -132,18 +132,7 @@ interface ProductNameIdea {
   reasons: string[];
 }
 
-const CONTENT_QUALITY_TEMPLATES = {
-  default: {
-    label: 'Standard',
-    description: 'Balanced prompt settings for fast generation.',
-  },
-  'best-quality': {
-    label: 'Best Quality',
-    description: 'Adds stricter structure and anti-filler rules to maximize usability score.',
-  },
-} as const;
-
-type ContentQualityTemplateId = keyof typeof CONTENT_QUALITY_TEMPLATES;
+type ContentQualityTemplateId = 'default' | 'best-quality';
 
 function formatApiError(data: { error?: string; details?: string[] }, fallback: string): string {
   const details = Array.isArray(data.details) ? data.details : [];
@@ -152,11 +141,16 @@ function formatApiError(data: { error?: string; details?: string[] }, fallback: 
 
 function GenerateContent() {
   const searchParams = useSearchParams();
-  const [step, setStep] = useState(1);
-  const [nicheId, setNicheId] = useState(searchParams.get('niche') || '');
-  const [productTypeId, setProductTypeId] = useState('');
-  const [title, setTitle] = useState('');
-  const [colorSchemeId, setColorSchemeId] = useState('');
+  const queryNicheId = searchParams.get('niche') || '';
+  const queryProductTypeId = searchParams.get('product') || '';
+  const requestedKeyword = searchParams.get('q') || '';
+  const initialNiche = getNicheById(queryNicheId);
+  const initialProduct = initialNiche?.products.find((p) => p.id === queryProductTypeId);
+  const [step, setStep] = useState(initialProduct ? 3 : initialNiche ? 2 : 1);
+  const [nicheId, setNicheId] = useState(initialNiche?.id || '');
+  const [productTypeId, setProductTypeId] = useState(initialProduct?.id || '');
+  const [title, setTitle] = useState(initialProduct?.name || '');
+  const [colorSchemeId, setColorSchemeId] = useState(initialNiche?.colorSchemes[0]?.id || '');
   const [pageSize, setPageSize] = useState('letter');
   const [content, setContent] = useState<Record<string, unknown> | null>(null);
   const [loading, setLoading] = useState(false);
@@ -183,7 +177,7 @@ function GenerateContent() {
   const [etsyPrice, setEtsyPrice] = useState('5.00');
   const [etsyConnected, setEtsyConnected] = useState(false);
   const [etsyPublishing, setEtsyPublishing] = useState(false);
-  const [etsyPublished, setEtsyPublished] = useState<{ listing_id: number; url?: string; warning?: string } | null>(null);
+  const [etsyPublished, setEtsyPublished] = useState<{ listing_id: number } | null>(null);
   const [publishWarnings, setPublishWarnings] = useState<string[]>([]);
   const [etsyError, setEtsyError] = useState('');
   const [automationStatus, setAutomationStatus] = useState('');
@@ -218,6 +212,37 @@ function GenerateContent() {
     setShowRawJson(false);
   }
 
+  useEffect(() => {
+    const settings = getSettings();
+    const preferredPageSize = typeof settings.defaultPageSize === 'string' ? settings.defaultPageSize : '';
+    if (preferredPageSize === 'letter' || preferredPageSize === 'a4' || preferredPageSize === 'a5') {
+      setPageSize(preferredPageSize);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!queryNicheId) return;
+
+    const nextNiche = getNicheById(queryNicheId);
+    const nextProduct = nextNiche?.products.find((p) => p.id === queryProductTypeId);
+    if (!nextNiche) return;
+
+    resetGeneratedState();
+    setNicheId(nextNiche.id);
+    setColorSchemeId(nextNiche.colorSchemes[0]?.id || '');
+
+    if (nextProduct) {
+      setProductTypeId(nextProduct.id);
+      setTitle(nextProduct.name);
+      setStep(3);
+      return;
+    }
+
+    setProductTypeId('');
+    setTitle('');
+    setStep(2);
+  }, [queryNicheId, queryProductTypeId]);
+
   // Check Etsy connection once on mount
   useEffect(() => {
     fetch('/api/etsy/status')
@@ -241,7 +266,7 @@ function GenerateContent() {
       const res = await fetch('/api/generate-etsy', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nicheId, productTypeId, productName: title || product?.name, settings: getSettings() }),
+        body: JSON.stringify({ nicheId, productTypeId, productName: title || product?.name, pageSize, settings: getSettings() }),
       });
       const data = await res.json();
       if (!res.ok || data.error) throw new Error(formatApiError(data, 'Failed to generate Etsy listing'));
@@ -254,7 +279,7 @@ function GenerateContent() {
     } finally {
       setEtsyLoading(false);
     }
-  }, [nicheId, productTypeId, title, product]);
+  }, [nicheId, productTypeId, title, product, pageSize]);
 
   // Auto-generate Etsy listing when entering step 6
   useEffect(() => {
@@ -366,7 +391,7 @@ function GenerateContent() {
       a.download = `${(title || product?.name || 'product').replace(/\s+/g, '-')}.pdf`;
       a.click();
 
-      setAutomationStatus('Generating 5 Etsy listing images...');
+      setAutomationStatus('Generating 3 Etsy listing images...');
       const images = hasOpenAIImageKey()
         ? await generateListingImages()
         : [];
@@ -425,7 +450,7 @@ function GenerateContent() {
           nicheId,
           productTypeId,
           title: title || product?.name,
-          imageCount: 5,
+          imageCount: 3,
           colorScheme,
           settings: getSettings(),
         }),
@@ -498,8 +523,9 @@ function GenerateContent() {
       });
       const data = await res.json();
       if (!res.ok || data.error) throw new Error(formatApiError(data, 'Failed to publish to Etsy'));
-      setPublishWarnings(Array.isArray(data.warnings) ? data.warnings : []);
-      setEtsyPublished({ listing_id: data.listing?.listing_id, warning: data.warning });
+      const allPublishWarnings = Array.isArray(data.warnings) ? data.warnings : [];
+      setPublishWarnings(allPublishWarnings);
+      setEtsyPublished({ listing_id: data.listing?.listing_id });
       return true;
     } catch (e) {
       setEtsyError(e instanceof Error ? e.message : 'Failed to publish to Etsy');
@@ -576,6 +602,12 @@ function GenerateContent() {
             <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100">What kind of products do you make?</h2>
             <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">Pick the niche that best fits the product you want to create. You can make products from any niche anytime.</p>
           </div>
+          {!nicheId && requestedKeyword && (
+            <div className="mb-4 p-3 bg-indigo-50 dark:bg-indigo-950 border border-indigo-200 dark:border-indigo-800 rounded-lg">
+              <p className="text-sm font-medium text-indigo-800 dark:text-indigo-200">Research keyword: “{requestedKeyword}”</p>
+              <p className="text-xs text-indigo-600 dark:text-indigo-300 mt-1">Pick the niche that best matches this idea, then choose the product type you want to generate.</p>
+            </div>
+          )}
           <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
             {NICHES.map((n) => (
               <button key={n.id} onClick={() => { resetGeneratedState(); setNicheId(n.id); setProductTypeId(''); setColorSchemeId(''); setStep(2); }}
@@ -901,13 +933,13 @@ function GenerateContent() {
               )}
               {imageLoading && (
                 <div className="mb-3 p-3 bg-indigo-50 dark:bg-indigo-950 border border-indigo-200 dark:border-indigo-800 rounded-lg">
-                  <p className="text-xs text-indigo-700 dark:text-indigo-300 font-medium">🎨 Generating your 5 Etsy listing images...</p>
+                  <p className="text-xs text-indigo-700 dark:text-indigo-300 font-medium">🎨 Generating your 3 Etsy listing images...</p>
                 </div>
               )}
               {generatedImages.length > 0 && (
                 <div className="mb-4">
                   <div className="flex items-center justify-between mb-2">
-                    <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">Generated listing images ({generatedImages.length}/5)</p>
+                    <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">Generated listing images ({generatedImages.length}/3)</p>
                     {imageProviderMode && (
                       <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900 text-emerald-700 dark:text-emerald-300">
                         OpenAI images
@@ -1018,20 +1050,26 @@ function GenerateContent() {
             <Card padding="lg" className="text-center">
               <p className="text-4xl mb-3">🎉</p>
               <p className="text-xl font-bold text-green-600 dark:text-green-400 mb-2">Draft Created on Etsy!</p>
-              {etsyPublished.warning && (
-                <p className="text-sm text-amber-600 dark:text-amber-400 mb-3 bg-amber-50 dark:bg-amber-950 p-2 rounded">{etsyPublished.warning}</p>
+              {publishWarnings.length > 0 && (
+                <div className="text-left mb-4 p-3 bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded-lg">
+                  <p className="text-xs font-medium text-amber-800 dark:text-amber-200 mb-1">Publish notes</p>
+                  <ul className="space-y-1 text-xs text-amber-700 dark:text-amber-300">
+                    {publishWarnings.map((w) => <li key={w}>• {w}</li>)}
+                  </ul>
+                </div>
               )}
-              <p className="text-slate-500 text-sm mb-4">
-                Listing ID: {etsyPublished.listing_id} — Go to your Etsy shop to review and publish.
+              <p className="text-slate-500 text-sm mb-1">
+                Listing ID: <span className="font-mono">{etsyPublished.listing_id}</span>
               </p>
+              <p className="text-slate-400 text-xs mb-4">The draft is in your Etsy shop. Open it to add more photos and publish.</p>
               <div className="flex gap-3 justify-center flex-wrap">
                 <a
-                  href="https://www.etsy.com/your/listings"
+                  href={`https://www.etsy.com/your/listings/${etsyPublished.listing_id}/edit`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="bg-orange-500 hover:bg-orange-600 text-white text-sm font-semibold px-5 py-2 rounded-lg transition-colors"
                 >
-                  View on Etsy →
+                  Edit Draft on Etsy →
                 </a>
                 <button
                   onClick={() => { resetGeneratedState(); setStep(1); setNicheId(''); setProductTypeId(''); }}
@@ -1143,7 +1181,7 @@ function GenerateContent() {
               <div>
                 <Card padding="md" className="mb-4">
                   <p className="text-sm font-semibold mb-3">Publish Settings</p>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">Images ready: {generatedImages.length}/5</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">Images ready: {generatedImages.length}/3</p>
                   <Input
                     label="Price (USD)"
                     type="number"
@@ -1181,7 +1219,7 @@ function GenerateContent() {
                       disabled={generatedImages.length === 0}
                       className="w-full border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 text-sm font-medium py-2.5 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      Download 5 Listing Images
+                      Download 3 Listing Images
                     </button>
                     <button
                       onClick={() => copyText(`Title: ${etsyListing?.title}\n\nCategory: ${etsyListing?.category || 'Paper & Party Supplies > Paper > Calendars & Planners'}\nTaxonomy ID: ${etsyListing?.taxonomyId || 2078}\n\nTags: ${etsyListing?.tags?.join(', ')}\n\nDescription:\n${etsyListing?.description}`, 'all')}

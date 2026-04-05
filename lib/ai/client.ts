@@ -143,12 +143,33 @@ export async function generateContent(
   mode: GenerationMode = 'product'
 ): Promise<string> {
   const { client, model, provider } = createAIClient(settings);
-  const temperature = mode === 'listing' ? 0.3 : 0.4;
-  const maxTokens = mode === 'listing' ? 1400 : 2200;
+  const temperature = mode === 'listing' ? 0.4 : 0.75;
+  const maxTokens = mode === 'listing' ? 1800 : 3000;
 
   const systemContent =
     mode === 'product'
-      ? 'You create printable digital product content for Etsy buyers. Always return valid JSON when asked. Content must be human-usable, not filler: practical, complete, and readable on a real printable. Include clear guidance, enough structure to justify purchase, specific section names, and concrete prompts/items. Avoid generic headings like "Section 1" or "Stuff", avoid repetition, avoid vague motivational fluff, and do not produce thin/minimal output. Assume a real customer paid for this and expects a polished worksheet they can use immediately.'
+      ? `You create premium printable digital products for Etsy buyers who paid real money. They expect specific, immediately usable content — not templates, not placeholders, not motivational filler.
+
+WHAT MAKES AI SLOP (never produce these):
+- "Win #1:" — a bare label, tells the buyer nothing
+- "Task: ___" or "Step 2: _________________________" — an unfilled template skeleton
+- "Activity:" — single word plus colon, gives no instruction
+- "Do something good for yourself" — so vague any printable would say it
+- "You've got this!" — hollow filler with no connection to what's on the page
+
+WHAT MAKES QUALITY CONTENT (model your output on these):
+- "What's one win from today's work, even if it felt small?" — complete, invites real reflection
+- "Name the exact thing making your chest tight right now." — grounded, actionable
+- "Write the task you've avoided longest — then write the absolute smallest first step." — two-part, forces action
+- "Go outside for 5 minutes, no phone. Come back and write one thing you noticed." — instruction plus follow-up
+- Closing: "Every entry here is evidence you showed up. That matters more than perfection." — specific to the product
+
+RULES:
+1. JSON template values are structural scaffolding — replace EVERY value with specific, original content.
+2. No item that is just a label followed by a colon ("Habit 1:", "Goal:", "Category:").
+3. No item under 5 meaningful words unless it is a checkbox label in an explicit fill-in tracker.
+4. No two items conveying the same idea in different words.
+5. Return raw JSON only — no markdown fences, no commentary, nothing outside the JSON object.`
       : 'You create Etsy listing copy for real buyers. Always return valid JSON when asked. Avoid generic copy: use specific keywords, concrete product details, and complete fields with strong depth. Do not use empty hype, filler, or repetitive keyword stuffing.';
 
   const modelCandidates =

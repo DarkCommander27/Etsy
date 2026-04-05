@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateContent, AIProviderError, AISettings } from '@/lib/ai/client';
 import { ContentQualityTemplateId, ContentVariationId, getContentPrompt } from '@/lib/ai/prompts';
-import { applyContentQualityRepairs, evaluateProductQuality, parseGeneratedProductContent, PRODUCT_QUALITY_MIN_SCORE } from '@/lib/validation/generated';
+import { applyContentQualityRepairs, evaluateProductQuality, parseGeneratedProductContent, PRODUCT_QUALITY_MIN_SCORE, validateProductSelectionRequest } from '@/lib/validation/generated';
 
 const MAX_GENERATION_ATTEMPTS = 8;
 
@@ -9,16 +9,28 @@ function buildQualityRetryPrompt(basePrompt: string, issues: string[], attempt: 
   if (!issues.length || attempt <= 1) return basePrompt;
 
   const issueLines = issues.slice(0, 8).map((issue) => `- ${issue}`).join('\n');
-  return `${basePrompt}\n\nPrevious attempt quality gaps to fix now:\n${issueLines}\n\nRegenerate and fix every listed gap while preserving the same JSON shape and product intent.`;
+  return `${basePrompt}
+
+Previous attempt quality gaps to fix now:
+${issueLines}
+
+IMPORTANT: Do not rephrase or slightly adjust the previous output. Write completely new, specific content from scratch. Every item, prompt, or instruction must be independently useful — a real buyer should know exactly what to write or do without needing to ask "what do you mean?". Bare labels like "Win #1:", "Task:", or "Step 2: ___" are not acceptable. Replace every placeholder with a complete, concrete prompt or instruction. Preserve the same JSON shape and product intent.`;
 }
 
 export async function POST(req: NextRequest) {
   try {
     const body: unknown = await req.json();
     const rawBody = body && typeof body === 'object' ? body as Record<string, unknown> : {};
-    const nicheId = typeof rawBody.nicheId === 'string' ? rawBody.nicheId : '';
-    const productTypeId = typeof rawBody.productTypeId === 'string' ? rawBody.productTypeId : '';
-    const customTitle = typeof rawBody.customTitle === 'string' ? rawBody.customTitle : undefined;
+    const selection = validateProductSelectionRequest(body);
+
+    if (!selection.success || !selection.data) {
+      return NextResponse.json(
+        { error: selection.error, details: selection.issues },
+        { status: 400 }
+      );
+    }
+
+    const { nicheId, productTypeId, customTitle } = selection.data;
     const settings = rawBody.settings && typeof rawBody.settings === 'object' ? rawBody.settings as AISettings : undefined;
     const qualityTemplateId = rawBody.qualityTemplateId as ContentQualityTemplateId | undefined;
     const variationId = rawBody.variationId as ContentVariationId | undefined;

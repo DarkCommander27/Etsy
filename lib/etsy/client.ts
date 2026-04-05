@@ -1,13 +1,10 @@
-import fs from 'fs';
-import path from 'path';
 import crypto from 'crypto';
+import { deleteStoredJson, getStoredJson, setStoredJson } from '@/lib/storage';
 import { validateEtsyListing } from '@/lib/validation/generated';
 import { sleep } from '@/lib/utils';
 
-const DATA_DIR = path.join(process.cwd(), 'data');
-const AUTH_FILE = path.join(DATA_DIR, 'etsy-auth.json');
-const PKCE_FILE = path.join(DATA_DIR, 'etsy-pkce.json');
-const ETZY_REQUEST_TIMEOUT_MS = 20_000;
+const ETSY_REQUEST_TIMEOUT_MS = 20_000;
+const ETSY_APP_KEY_STORAGE_KEY = 'etsy_app_key';
 
 function isTransientStatus(status: number): boolean {
   return status === 408 || status === 429 || (status >= 500 && status <= 599);
@@ -16,7 +13,7 @@ function isTransientStatus(status: number): boolean {
 async function fetchWithTimeout(
   input: string,
   init: RequestInit,
-  timeoutMs = ETZY_REQUEST_TIMEOUT_MS
+  timeoutMs = ETSY_REQUEST_TIMEOUT_MS
 ): Promise<Response> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
@@ -27,13 +24,13 @@ async function fetchWithTimeout(
   }
 }
 
-async function fetchWithRetry(
+export async function fetchWithRetry(
   input: string,
   init: RequestInit,
   options?: { retries?: number; timeoutMs?: number }
 ): Promise<Response> {
   const retries = options?.retries ?? 2;
-  const timeoutMs = options?.timeoutMs ?? ETZY_REQUEST_TIMEOUT_MS;
+  const timeoutMs = options?.timeoutMs ?? ETSY_REQUEST_TIMEOUT_MS;
 
   let lastError: unknown;
   for (let attempt = 0; attempt <= retries; attempt += 1) {
@@ -83,39 +80,34 @@ export interface EtsyTokens {
   token_type: string;
 }
 
-function ensureDataDir() {
-  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+export function getConfiguredEtsyApiKey(): string {
+  return String(process.env.ETSY_API_KEY || getStoredJson<string>(ETSY_APP_KEY_STORAGE_KEY) || '').trim();
+}
+
+export function saveConfiguredEtsyApiKey(apiKey: string): void {
+  const trimmed = apiKey.trim();
+  if (!trimmed) return;
+  setStoredJson(ETSY_APP_KEY_STORAGE_KEY, trimmed);
 }
 
 export function getTokens(): EtsyTokens | null {
-  ensureDataDir();
-  if (!fs.existsSync(AUTH_FILE)) return null;
-  try {
-    return JSON.parse(fs.readFileSync(AUTH_FILE, 'utf-8'));
-  } catch { return null; }
+  return getStoredJson<EtsyTokens>('etsy_tokens');
 }
 
 export function saveTokens(tokens: EtsyTokens) {
-  ensureDataDir();
-  fs.writeFileSync(AUTH_FILE, JSON.stringify(tokens, null, 2));
+  setStoredJson('etsy_tokens', tokens);
 }
 
 export function savePKCE(verifier: string, state: string) {
-  ensureDataDir();
-  fs.writeFileSync(PKCE_FILE, JSON.stringify({ verifier, state }, null, 2));
+  setStoredJson('etsy_pkce', { verifier, state });
 }
 
 export function getPKCE(): { verifier: string; state: string } | null {
-  if (!fs.existsSync(PKCE_FILE)) return null;
-  try {
-    return JSON.parse(fs.readFileSync(PKCE_FILE, 'utf-8'));
-  } catch { return null; }
+  return getStoredJson<{ verifier: string; state: string }>('etsy_pkce');
 }
 
 export function clearPKCE(): void {
-  try {
-    if (fs.existsSync(PKCE_FILE)) fs.unlinkSync(PKCE_FILE);
-  } catch { /* ignore */ }
+  deleteStoredJson('etsy_pkce');
 }
 
 export function generatePKCE() {
@@ -143,15 +135,16 @@ export async function refreshTokens(apiKey: string): Promise<EtsyTokens | null> 
       client_id: apiKey,
       refresh_token: tokens.refresh_token,
     }),
-  }, { retries: 2, timeoutMs: ETZY_REQUEST_TIMEOUT_MS });
+  }, { retries: 2, timeoutMs: ETSY_REQUEST_TIMEOUT_MS });
 
   if (!res.ok) return null;
-  const data = await res.json();
+  const data = await res.json() as Record<string, unknown>;
+  if (typeof data.access_token !== 'string' || typeof data.expires_in !== 'number') return null;
   const newTokens: EtsyTokens = {
     access_token: data.access_token,
-    refresh_token: data.refresh_token || tokens.refresh_token,
+    refresh_token: (typeof data.refresh_token === 'string' ? data.refresh_token : null) || tokens.refresh_token,
     expires_at: Date.now() + data.expires_in * 1000,
-    token_type: data.token_type,
+    token_type: typeof data.token_type === 'string' ? data.token_type : 'Bearer',
   };
   saveTokens(newTokens);
   return newTokens;
@@ -250,7 +243,7 @@ export async function uploadListingFile(
       },
       body: formData,
     },
-    ETZY_REQUEST_TIMEOUT_MS
+    ETSY_REQUEST_TIMEOUT_MS
   );
 
   if (!res.ok) {
@@ -286,7 +279,7 @@ export async function uploadListingImage(
       },
       body: formData,
     },
-    ETZY_REQUEST_TIMEOUT_MS
+    ETSY_REQUEST_TIMEOUT_MS
   );
 
   if (!res.ok) {

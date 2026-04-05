@@ -8,15 +8,18 @@ const mocks = vi.hoisted(() => ({
   mockAddHistoryEntry: vi.fn(),
   mockGenerateAndStoreListingImages: vi.fn(),
   mockCreateListing: vi.fn(),
+  mockGetConfiguredEtsyApiKey: vi.fn(),
   mockUploadListingFile: vi.fn(),
   mockUploadListingImage: vi.fn(),
   mockExistsSync: vi.fn(),
   mockReadFileSync: vi.fn(),
   mockWriteFileSync: vi.fn(),
   mockMkdirSync: vi.fn(),
+  mockGetPublishIdempotency: vi.fn(),
+  mockSetPublishIdempotency: vi.fn(),
 }));
 
-let idempotencyCache = '';
+let idempotencyCache: Record<string, { listing_id: number; createdAt: string }> = {};
 
 vi.mock('@/lib/ai/client', () => ({
   generateContent: mocks.mockGenerateContent,
@@ -40,8 +43,14 @@ vi.mock('@/lib/images/mockup', () => ({
 
 vi.mock('@/lib/etsy/client', () => ({
   createListing: mocks.mockCreateListing,
+  getConfiguredEtsyApiKey: mocks.mockGetConfiguredEtsyApiKey,
   uploadListingFile: mocks.mockUploadListingFile,
   uploadListingImage: mocks.mockUploadListingImage,
+}));
+
+vi.mock('@/lib/storage', () => ({
+  getPublishIdempotency: mocks.mockGetPublishIdempotency,
+  setPublishIdempotency: mocks.mockSetPublishIdempotency,
 }));
 
 vi.mock('fs', () => ({
@@ -73,20 +82,38 @@ function asNextRequest(body: unknown): NextRequest {
 const highQualityContent = {
   title: 'ADHD Daily Planner Printable',
   subtitle: 'Structure your day with focus and calm',
-  instructions: 'Fill this each morning and revisit in the evening.',
+  instructions: 'Fill this each morning before opening any apps, then revisit at the end of the day.',
   sections: [
     {
       name: 'Top Priorities',
-      description: 'Most important tasks today',
-      items: ['Priority 1', 'Priority 2', 'Priority 3'],
+      description: 'Name the three tasks that matter most today before anything else',
+      items: [
+        'Write down the single most important task to finish this morning',
+        'Name a quick win you can complete in under 10 minutes right now',
+        'Identify which task can safely wait until tomorrow without consequence',
+      ],
     },
     {
-      name: 'Time Blocks',
-      description: 'Map your day into focus sprints',
-      items: ['Morning sprint', 'Midday sprint', 'Afternoon sprint'],
+      name: 'Focus Blocks',
+      description: 'Match your peak energy windows to your hardest work',
+      items: [
+        'Block 90 minutes for your hardest task while your energy is still fresh',
+        'Set a 5-minute alarm before each block so you can settle in without rushing',
+        'Choose one specific distraction to deliberately remove during this block',
+      ],
+    },
+    {
+      name: 'End-of-Day Check-In',
+      description: 'Acknowledge what moved forward and reset your slate for tomorrow',
+      items: [
+        'Write one thing you completed today that was on your list',
+        'Name the single interruption that cost you the most focused time today',
+        'Choose the one task you will start with first thing tomorrow morning',
+      ],
     },
   ],
-  affirmation: 'Progress over perfection.',
+  prompts: ['What one extra action today would make tomorrow noticeably easier?'],
+  affirmation: 'Every time you show up and try, you are building a habit that compounds over time.',
 };
 
 const lowQualityContent = {
@@ -95,7 +122,7 @@ const lowQualityContent = {
   time_blocks: [{ time: '9:00', task: 'Do thing' }],
 };
 
-const listingImages = [1, 2, 3, 4, 5].map((rank) => ({
+const listingImages = [1, 2, 3].map((rank) => ({
   id: `img-${rank}`,
   rank,
   filename: `img-${rank}.png`,
@@ -130,29 +157,27 @@ const validListing = {
 describe('API automation integration', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    idempotencyCache = '';
+    idempotencyCache = {};
     mocks.mockGetContentPrompt.mockReturnValue('PROMPT');
     mocks.mockGeneratePdf.mockResolvedValue(new Uint8Array([37, 80, 68, 70]));
     mocks.mockAddHistoryEntry.mockImplementation(() => undefined);
-    mocks.mockExistsSync.mockImplementation((inputPath: unknown) => {
-      if (typeof inputPath === 'string' && inputPath.includes('publish-idempotency.json')) {
-        return Boolean(idempotencyCache);
-      }
+    mocks.mockGetPublishIdempotency.mockImplementation((key: string) => idempotencyCache[key] || null);
+    mocks.mockSetPublishIdempotency.mockImplementation((key: string, listingId: number) => {
+      idempotencyCache[key] = {
+        listing_id: listingId,
+        createdAt: new Date().toISOString(),
+      };
+    });
+    mocks.mockExistsSync.mockImplementation(() => {
       return true;
     });
-    mocks.mockReadFileSync.mockImplementation((inputPath: unknown) => {
-      if (typeof inputPath === 'string' && inputPath.includes('publish-idempotency.json')) {
-        return idempotencyCache || '{}';
-      }
+    mocks.mockReadFileSync.mockImplementation(() => {
       return Buffer.from([137, 80, 78, 71]);
     });
-    mocks.mockWriteFileSync.mockImplementation((inputPath: unknown, data: unknown) => {
-      if (typeof inputPath === 'string' && inputPath.includes('publish-idempotency.json')) {
-        idempotencyCache = typeof data === 'string' ? data : String(data);
-      }
-    });
+    mocks.mockWriteFileSync.mockImplementation(() => undefined);
     mocks.mockMkdirSync.mockImplementation(() => undefined);
     mocks.mockCreateListing.mockResolvedValue({ listing_id: 123456 });
+    mocks.mockGetConfiguredEtsyApiKey.mockReturnValue('test-key');
     mocks.mockUploadListingFile.mockResolvedValue({ ok: true });
     mocks.mockUploadListingImage.mockResolvedValue({ ok: true });
   });
@@ -192,7 +217,7 @@ describe('API automation integration', () => {
         nicheId: 'adhd',
         productTypeId: 'daily-planner',
         title: highQualityContent.title,
-        imageCount: 5,
+        imageCount: 3,
         colorScheme: {
           name: 'Calm Blue',
           primary: '#2563EB',
@@ -205,9 +230,9 @@ describe('API automation integration', () => {
     );
     expect(imagesRes.status).toBe(200);
     const imagesData = await imagesRes.json();
-    expect(imagesData.images).toHaveLength(5);
+    expect(imagesData.images).toHaveLength(3);
 
-    const shuffledImages = [imagesData.images[4], imagesData.images[2], imagesData.images[0], imagesData.images[3], imagesData.images[1]];
+    const shuffledImages = [imagesData.images[2], imagesData.images[0], imagesData.images[1]];
     const publishRes = await publishPost(
       asNextRequest({
         ...validListing,
@@ -230,10 +255,10 @@ describe('API automation integration', () => {
     expect(publishData.listing.listing_id).toBe(123456);
     expect(mocks.mockCreateListing).toHaveBeenCalledTimes(1);
     expect(mocks.mockUploadListingFile).toHaveBeenCalledTimes(1);
-    expect(mocks.mockUploadListingImage).toHaveBeenCalledTimes(5);
+    expect(mocks.mockUploadListingImage).toHaveBeenCalledTimes(3);
 
     const uploadedRanks = mocks.mockUploadListingImage.mock.calls.map((call) => call[5]);
-    expect(uploadedRanks).toEqual([1, 2, 3, 4, 5]);
+    expect(uploadedRanks).toEqual([1, 2, 3]);
   });
 
   it('blocks publish when product quality is below threshold', async () => {
@@ -293,6 +318,6 @@ describe('API automation integration', () => {
     // No second create/upload should occur because response was served from cache.
     expect(mocks.mockCreateListing).toHaveBeenCalledTimes(1);
     expect(mocks.mockUploadListingFile).toHaveBeenCalledTimes(1);
-    expect(mocks.mockUploadListingImage).toHaveBeenCalledTimes(5);
+    expect(mocks.mockUploadListingImage).toHaveBeenCalledTimes(3);
   });
 });

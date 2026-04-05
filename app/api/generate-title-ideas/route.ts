@@ -1,18 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateProductNameIdeas } from '@/lib/etsy/titleSuggestions';
 import { getNicheById, getProductById } from '@/lib/niches';
+import { validateProductSelectionRequest } from '@/lib/validation/generated';
 
 export async function POST(req: NextRequest) {
   try {
     const body: unknown = await req.json();
     const rawBody = body && typeof body === 'object' ? body as Record<string, unknown> : {};
-    const nicheId = typeof rawBody.nicheId === 'string' ? rawBody.nicheId : undefined;
-    const productTypeId = typeof rawBody.productTypeId === 'string' ? rawBody.productTypeId : undefined;
-    const customTitle = typeof rawBody.customTitle === 'string' ? rawBody.customTitle : undefined;
+    const requestValidation = validateProductSelectionRequest(body);
+    const nicheId = requestValidation.data?.nicheId;
+    const productTypeId = requestValidation.data?.productTypeId;
+    const customTitle = typeof rawBody.customTitle === 'string' && rawBody.customTitle.trim()
+      ? rawBody.customTitle.trim()
+      : undefined;
 
-    if (!nicheId || !productTypeId) {
+    if (!requestValidation.success || !nicheId || !productTypeId) {
       return NextResponse.json(
-        { error: 'nicheId and productTypeId are required.' },
+        { error: requestValidation.error, details: requestValidation.issues },
         { status: 400 }
       );
     }

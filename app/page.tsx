@@ -27,14 +27,20 @@ export default function Dashboard() {
 
   useEffect(() => {
     fetch('/api/history')
-      .then((r) => r.json())
+      .then(async (r) => {
+        const data = await r.json();
+        if (!r.ok) {
+          throw new Error(typeof data.error === 'string' ? data.error : 'Could not load history.');
+        }
+        return data;
+      })
       .then(({ history: h }) => {
         if (!Array.isArray(h)) return;
         setHistory(h);
         const today = new Date().toDateString();
         setTodayCount(h.filter((e: HistoryEntry) => new Date(e.createdAt).toDateString() === today).length);
       })
-      .catch(() => setHistoryError('Could not load history.'));
+      .catch((err) => setHistoryError(err instanceof Error ? err.message : 'Could not load history.'));
   }, []);
 
   return (

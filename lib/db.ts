@@ -1,10 +1,4 @@
-import fs from 'fs';
-import path from 'path';
-
-const DATA_DIR = path.join(process.cwd(), 'data');
-const HISTORY_FILE = path.join(DATA_DIR, 'history.json');
-const LOCK_FILE = path.join(DATA_DIR, 'history.lock');
-const LOCK_TIMEOUT_MS = 5000;
+import { getStorageDb } from '@/lib/storage';
 
 export interface HistoryEntry {
   id: string;
@@ -27,53 +21,64 @@ export interface HistoryEntry {
   }>;
 }
 
-function ensureDataDir() {
-  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-}
-
-/** Acquire an exclusive write lock via a lock file. Returns a release function. */
-async function acquireLock(): Promise<() => void> {
-  const deadline = Date.now() + LOCK_TIMEOUT_MS;
-  while (Date.now() < deadline) {
-    try {
-      // O_EXCL ensures atomic create — only one process succeeds
-      fs.writeFileSync(LOCK_FILE, String(process.pid), { flag: 'wx' });
-      return () => { try { fs.unlinkSync(LOCK_FILE); } catch { /* already gone */ } };
-    } catch {
-      // Lock held by another request — yield to the event loop before retrying
-      await new Promise<void>((r) => setTimeout(r, 5));
-    }
-  }
-  // Timed out — stale lock, forcefully take it
-  try { fs.unlinkSync(LOCK_FILE); } catch { /* ignore */ }
-  fs.writeFileSync(LOCK_FILE, String(process.pid));
-  return () => { try { fs.unlinkSync(LOCK_FILE); } catch { /* already gone */ } };
-}
-
 export function getHistory(): HistoryEntry[] {
-  ensureDataDir();
-  if (!fs.existsSync(HISTORY_FILE)) return [];
-  try {
-    return JSON.parse(fs.readFileSync(HISTORY_FILE, 'utf-8'));
-  } catch {
-    return [];
-  }
-}
+  const db = getStorageDb();
+  const rows = db.prepare(`
+    SELECT id, niche_id, product_type_id, title, color_scheme, page_size, created_at, content_json, generated_images_json
+    FROM history_entries
+    ORDER BY datetime(created_at) DESC, rowid DESC
+    LIMIT 500
+  `).all() as Array<{
+    id: string;
+    niche_id: string;
+    product_type_id: string;
+    title: string;
+    color_scheme: string;
+    page_size: string;
+    created_at: string;
+    content_json: string | null;
+    generated_images_json: string | null;
+  }>;
 
-export function saveHistory(entries: HistoryEntry[]) {
-  ensureDataDir();
-  fs.writeFileSync(HISTORY_FILE, JSON.stringify(entries, null, 2));
+  return rows.map((row) => ({
+    id: row.id,
+    nicheId: row.niche_id,
+    productTypeId: row.product_type_id,
+    title: row.title,
+    colorScheme: row.color_scheme,
+    pageSize: row.page_size,
+    createdAt: row.created_at,
+    content: row.content_json ? JSON.parse(row.content_json) : undefined,
+    generatedImages: row.generated_images_json ? JSON.parse(row.generated_images_json) : undefined,
+  }));
 }
 
 export async function addHistoryEntry(entry: HistoryEntry): Promise<void> {
-  const release = await acquireLock();
-  try {
-    const history = getHistory();
-    // Avoid duplicate IDs from retried requests
-    if (history.some((e) => e.id === entry.id)) return;
-    history.unshift(entry);
-    saveHistory(history.slice(0, 500));
-  } finally {
-    release();
-  }
+  const db = getStorageDb();
+  const insert = db.prepare(`
+    INSERT OR IGNORE INTO history_entries
+    (id, niche_id, product_type_id, title, color_scheme, page_size, created_at, content_json, generated_images_json)
+    VALUES (@id, @niche_id, @product_type_id, @title, @color_scheme, @page_size, @created_at, @content_json, @generated_images_json)
+  `);
+
+  insert.run({
+    id: entry.id,
+    niche_id: entry.nicheId,
+    product_type_id: entry.productTypeId,
+    title: entry.title,
+    color_scheme: entry.colorScheme,
+    page_size: entry.pageSize,
+    created_at: entry.createdAt,
+    content_json: entry.content === undefined ? null : JSON.stringify(entry.content),
+    generated_images_json: entry.generatedImages === undefined ? null : JSON.stringify(entry.generatedImages),
+  });
+
+  db.prepare(`
+    DELETE FROM history_entries
+    WHERE id NOT IN (
+      SELECT id FROM history_entries
+      ORDER BY datetime(created_at) DESC, rowid DESC
+      LIMIT 500
+    )
+  `).run();
 }

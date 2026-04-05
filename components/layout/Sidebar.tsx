@@ -49,10 +49,10 @@ export function Sidebar() {
 export function MobileNav() {
   const pathname = usePathname();
   return (
-    <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-800 flex z-50">
-      {nav.slice(0, 5).map(({ href, label, icon: Icon }) => (
+    <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-800 flex overflow-x-auto z-50">
+      {nav.map(({ href, label, icon: Icon }) => (
         <Link key={href} href={href} className={clsx(
-          'flex-1 flex flex-col items-center py-2 text-xs gap-1 transition-colors',
+          'min-w-[84px] flex-1 flex flex-col items-center py-2 text-xs gap-1 transition-colors',
           pathname === href ? 'text-indigo-600 dark:text-indigo-400' : 'text-gray-500 dark:text-gray-400'
         )}>
           <Icon className="h-5 w-5" />

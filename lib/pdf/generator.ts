@@ -169,6 +169,31 @@ export async function generatePDF(options: PDFOptions): Promise<Uint8Array> {
 
   const content = options.content;
 
+  // Instructions block — e.g. brain-dump "Set a 10-minute timer..."
+  if (content?.instructions) {
+    const instrText = safeText(content.instructions as string);
+    if (instrText) {
+      ensureSpace(48);
+      page.drawRectangle({ x: margin, y: y - 4, width: contentWidth, height: 20, color: rgb(...secondary) });
+      page.drawText('HOW TO USE', { x: margin + 5, y, size: 9, font: bold, color: rgb(...primary) });
+      y -= 22;
+      const instrWrapped = drawWrappedText({
+        page,
+        text: instrText,
+        x: margin + 5,
+        y,
+        maxWidth: contentWidth - 10,
+        size: 9,
+        minSize: 8,
+        maxLines: 5,
+        lineHeight: 12,
+        font: regular,
+        color: rgb(...textColor),
+      });
+      y = instrWrapped.finalY - 10;
+    }
+  }
+
   if (content?.date_label) {
     ensureSpace(24);
     page.drawText(safeText(content.date_label), { x: margin, y, size: 10, font: regular, color: rgb(...textColor) });
@@ -216,9 +241,77 @@ export async function generatePDF(options: PDFOptions): Promise<Uint8Array> {
       page.drawRectangle({ x: margin, y: y - 14, width: contentWidth, height: 18, color: rowBg });
       page.drawText(safeText(block.time).substring(0, 10), { x: margin + 4, y: y - 9, size: 8, font: bold, color: rgb(...primary) });
       page.drawLine({ start: { x: margin + 68, y }, end: { x: margin + 68, y: y - 14 }, thickness: 0.8, color: rgb(...accent) });
+      const taskText = safeText(block.task);
+      if (taskText) {
+        drawWrappedText({
+          page,
+          text: taskText,
+          x: margin + 72,
+          y: y - 5,
+          maxWidth: contentWidth - 72,
+          size: 8,
+          minSize: 8,
+          maxLines: 1,
+          lineHeight: 10,
+          font: regular,
+          color: rgb(...textColor),
+        });
+      }
       y -= 18;
     });
     y -= 8;
+  }
+
+  // Daily planner wellness fields
+  if (content?.win_of_day) {
+    const wodText = safeText(content.win_of_day as string);
+    if (wodText) {
+      ensureSpace(26);
+      page.drawText(wodText, { x: margin, y, size: 9, font: regular, color: rgb(...textColor) });
+      const labelWidth = regular.widthOfTextAtSize(wodText, 9);
+      page.drawLine({ start: { x: margin + labelWidth + 6, y: y - 1 }, end: { x: margin + contentWidth, y: y - 1 }, thickness: 0.8, color: rgb(...primary) });
+      y -= 20;
+    }
+  }
+  if (content?.energy_check) {
+    const eText = safeText(content.energy_check as string);
+    if (eText) {
+      ensureSpace(22);
+      const ecWrapped = drawWrappedText({
+        page,
+        text: eText,
+        x: margin,
+        y,
+        maxWidth: contentWidth,
+        size: 8,
+        minSize: 8,
+        maxLines: 2,
+        lineHeight: 10,
+        font: regular,
+        color: rgb(...textColor),
+      });
+      y = ecWrapped.finalY - 6;
+    }
+  }
+  if (content?.water_check) {
+    const wText = safeText(content.water_check as string);
+    if (wText) {
+      ensureSpace(22);
+      const wcWrapped = drawWrappedText({
+        page,
+        text: wText,
+        x: margin,
+        y,
+        maxWidth: contentWidth,
+        size: 8,
+        minSize: 8,
+        maxLines: 2,
+        lineHeight: 10,
+        font: regular,
+        color: rgb(...textColor),
+      });
+      y = wcWrapped.finalY - 10;
+    }
   }
 
   if (Array.isArray(content?.categories)) {
@@ -249,9 +342,16 @@ export async function generatePDF(options: PDFOptions): Promise<Uint8Array> {
   }
 
   if (Array.isArray(content?.sections)) {
+    const mutedColor = rgb(
+      textColor[0] * 0.55 + bg[0] * 0.45,
+      textColor[1] * 0.55 + bg[1] * 0.45,
+      textColor[2] * 0.55 + bg[2] * 0.45
+    );
     (content.sections as Array<{name: string; description: string; items: string[]}>).forEach((sec) => {
-      const items = (sec.items || []).slice(0, 6);
-      ensureSpace(34 + items.length * 22);
+      const items = (sec.items || []).slice(0, 16);
+      const descText = safeText(sec.description);
+      // Reserve space for header + optional description + first few items; per-item breaks handle the rest
+      ensureSpace(34 + (descText ? 22 : 0) + Math.min(items.length, 3) * 22);
       page.drawRectangle({ x: margin, y: y - 4, width: contentWidth, height: 20, color: rgb(...secondary) });
       drawWrappedText({
         page,
@@ -267,7 +367,24 @@ export async function generatePDF(options: PDFOptions): Promise<Uint8Array> {
         color: rgb(...primary),
       });
       y -= 22;
+      if (descText) {
+        const descWrapped = drawWrappedText({
+          page,
+          text: descText,
+          x: margin + 5,
+          y,
+          maxWidth: contentWidth - 10,
+          size: 8,
+          minSize: 8,
+          maxLines: 2,
+          lineHeight: 10,
+          font: regular,
+          color: mutedColor,
+        });
+        y = descWrapped.finalY - 5;
+      }
       items.forEach((item) => {
+        ensureSpace(24);
         page.drawRectangle({ x: margin + 5, y: y - 2, width: 7, height: 7, color: rgb(...accent) });
         const wrapped = drawWrappedText({
           page,
@@ -326,6 +443,30 @@ export async function generatePDF(options: PDFOptions): Promise<Uint8Array> {
     });
   }
 
+  // Brain-dump closing prompt — e.g. "Now circle ONE thing to act on first."
+  if (content?.after_dump_prompt) {
+    const adpText = safeText(content.after_dump_prompt as string);
+    if (adpText) {
+      ensureSpace(52);
+      y -= 4;
+      page.drawRectangle({ x: margin, y: y - 6, width: contentWidth, height: 30, color: rgb(...primary) });
+      drawWrappedText({
+        page,
+        text: adpText,
+        x: margin + 8,
+        y: y + 8,
+        maxWidth: contentWidth - 16,
+        size: 9,
+        minSize: 8,
+        maxLines: 2,
+        lineHeight: 11,
+        font: bold,
+        color: rgb(1, 1, 1),
+      });
+      y -= 46;
+    }
+  }
+
   if (Array.isArray(content?.prompts)) {
     (content.prompts as string[]).forEach((prompt) => {
       ensureSpace(66);
@@ -353,38 +494,78 @@ export async function generatePDF(options: PDFOptions): Promise<Uint8Array> {
 
   if (Array.isArray(content?.columns)) {
     const cols = (content.columns as Array<{name: string; prompt: string}>).slice(0, 4);
-    ensureSpace(300);
+    // Header height: 20pt for name + 22pt for prompt = 42pt rectangle
+    const colHeaderH = 42;
+    const colRowH = 18;  // height of each write-in line row
+    const colRowLines = 4; // write-in lines per entry row
+    const colEntryRows = 3; // number of fill-in entry blocks per column
+    const colEntryH = colRowLines * colRowH + 8; // 80pt per entry block
+    const totalColHeight = colHeaderH + 6 + colEntryRows * colEntryH;
+    ensureSpace(totalColHeight + 20);
     const colW = (contentWidth - 8) / cols.length;
+    // Draw column headers with name + prompt
     cols.forEach((col, i) => {
       const x = margin + i * colW;
-      page.drawRectangle({ x, y: y - 4, width: colW - 3, height: 20, color: rgb(...secondary) });
+      page.drawRectangle({ x, y: y - colHeaderH + 16, width: colW - 3, height: colHeaderH, color: rgb(...secondary) });
       drawWrappedText({
         page,
         text: safeText(col.name),
-        x: x + 3,
+        x: x + 4,
         y,
         maxWidth: colW - 8,
-        size: 7,
+        size: 8,
         minSize: 7,
         maxLines: 1,
-        lineHeight: 8,
+        lineHeight: 9,
         font: bold,
         color: rgb(...primary),
       });
+      const promptText = safeText(col.prompt);
+      if (promptText) {
+        drawWrappedText({
+          page,
+          text: promptText,
+          x: x + 4,
+          y: y - 11,
+          maxWidth: colW - 8,
+          size: 6,
+          minSize: 6,
+          maxLines: 3,
+          lineHeight: 8,
+          font: regular,
+          color: rgb(
+            textColor[0] * 0.6 + bg[0] * 0.4,
+            textColor[1] * 0.6 + bg[1] * 0.4,
+            textColor[2] * 0.6 + bg[2] * 0.4
+          ),
+        });
+      }
     });
-    y -= 22;
-    for (let row = 0; row < 4; row++) {
+    y -= colHeaderH + 6;
+    // Draw write-in rows for each entry block
+    for (let row = 0; row < colEntryRows; row++) {
+      const rowTopY = y - row * colEntryH;
       cols.forEach((_, i) => {
         const x = margin + i * colW;
-        for (let line = 0; line < 4; line++) {
-          page.drawLine({ start: { x: x + 3, y: y - row * 65 - line * 15 }, end: { x: x + colW - 5, y: y - row * 65 - line * 15 }, thickness: 0.4, color: rgb(...accent) });
+        for (let line = 0; line < colRowLines; line++) {
+          page.drawLine({
+            start: { x: x + 3, y: rowTopY - line * colRowH },
+            end: { x: x + colW - 5, y: rowTopY - line * colRowH },
+            thickness: 0.4,
+            color: rgb(...accent),
+          });
         }
         if (i < cols.length - 1) {
-          page.drawLine({ start: { x: x + colW - 1, y: y - row * 65 + 4 }, end: { x: x + colW - 1, y: y - row * 65 - 62 }, thickness: 0.4, color: rgb(...accent) });
+          page.drawLine({
+            start: { x: x + colW - 1, y: rowTopY + 4 },
+            end: { x: x + colW - 1, y: rowTopY - colEntryH + 8 },
+            thickness: 0.4,
+            color: rgb(...accent),
+          });
         }
       });
     }
-    y -= 280;
+    y -= colEntryRows * colEntryH;
   }
 
   const bottomText = safeText(
