@@ -5,7 +5,7 @@ import { createListing, getConfiguredEtsyApiKey, uploadListingFile, uploadListin
 import { generatePDF, PDFOptions } from '@/lib/pdf/generator';
 import { saveOutputFolder } from '@/lib/output';
 import { getPublishIdempotency, setPublishIdempotency } from '@/lib/storage';
-import { PRODUCT_QUALITY_MIN_SCORE, evaluateNichePublishChecklist, evaluateProductQuality, validateEtsyListing, validateListingImageMeta, validateProductContent } from '@/lib/validation/generated';
+import { PRODUCT_QUALITY_MIN_SCORE, STRICT_ETSY_LISTING_VALIDATION, evaluateNichePublishChecklist, evaluateProductQuality, validateEtsyListing, validateListingImageMeta, validateProductContent } from '@/lib/validation/generated';
 
 const IDEMPOTENCY_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const IDEMPOTENCY_MAX_ENTRIES = 2000;
@@ -64,7 +64,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Etsy Shop ID not configured. Add it in Settings.' }, { status: 400 });
     }
 
-    const listingValidation = validateEtsyListing({ title, description, tags }, { requireAllTags: true });
+    const listingValidation = validateEtsyListing({ title, description, tags }, STRICT_ETSY_LISTING_VALIDATION);
     if (!listingValidation.success) {
       return NextResponse.json(
         { error: listingValidation.error, details: listingValidation.issues, warnings: listingValidation.warnings },

@@ -128,6 +128,12 @@ export type ProductSelectionRequest = z.infer<typeof productSelectionSchema>;
 export type EtsyListingGenerationRequest = z.infer<typeof etsyListingGenerationRequestSchema>;
 
 export const PRODUCT_QUALITY_MIN_SCORE = 82;
+export const STRICT_ETSY_LISTING_VALIDATION = {
+  requireAllTags: true,
+  requireDescriptionTargets: true,
+} as const;
+const ETSY_DESCRIPTION_MIN_WORDS = 200;
+const ETSY_DESCRIPTION_MAX_WORDS = 350;
 
 export interface ValidationResult<T> {
   success: boolean;
@@ -142,6 +148,10 @@ function formatIssues(error: z.ZodError): string[] {
     const path = issue.path.length ? `${issue.path.join('.')}: ` : '';
     return `${path}${issue.message}`;
   });
+}
+
+function countWords(text: string): number {
+  return text.trim().split(/\s+/).filter(Boolean).length;
 }
 
 function resolveProductSelection(nicheId: string, productTypeId: string): {
@@ -512,8 +522,8 @@ function collectListingWarnings(listing: EtsyListingDraft): string[] {
     warnings.push('Listing has fewer than 13 tags, which reduces Etsy search coverage.');
   }
 
-  const descWordCount = listing.description.split(/\s+/).filter(Boolean).length;
-  if (descWordCount < 200 || descWordCount > 350) {
+  const descWordCount = countWords(listing.description);
+  if (descWordCount < ETSY_DESCRIPTION_MIN_WORDS || descWordCount > ETSY_DESCRIPTION_MAX_WORDS) {
     warnings.push('Listing description is outside the target 200-350 word range.');
   }
 
@@ -526,6 +536,28 @@ function collectListingWarnings(listing: EtsyListingDraft): string[] {
   }
 
   return warnings;
+}
+
+function getBlockingListingIssues(listing: EtsyListingDraft): string[] {
+  const issues: string[] = [];
+  const description = listing.description.toLowerCase();
+  const descWordCount = countWords(listing.description);
+
+  if (descWordCount < ETSY_DESCRIPTION_MIN_WORDS || descWordCount > ETSY_DESCRIPTION_MAX_WORDS) {
+    issues.push(
+      `Listing description must be between ${ETSY_DESCRIPTION_MIN_WORDS} and ${ETSY_DESCRIPTION_MAX_WORDS} words; current count is ${descWordCount}.`
+    );
+  }
+
+  if (!description.includes('instant digital download')) {
+    issues.push('Listing description must include the exact phrase "instant digital download".');
+  }
+
+  if (!description.includes('pdf')) {
+    issues.push('Listing description must explicitly mention PDF format.');
+  }
+
+  return issues;
 }
 
 function getAntiGenericListingIssues(listing: EtsyListingDraft): string[] {
@@ -770,7 +802,10 @@ export function validateProductContent(content: unknown): ValidationResult<Produ
   };
 }
 
-export function parseGeneratedEtsyListing(raw: string): ValidationResult<EtsyListingDraft> {
+export function parseGeneratedEtsyListing(
+  raw: string,
+  options?: { requireDescriptionTargets?: boolean }
+): ValidationResult<EtsyListingDraft> {
   const warnings: string[] = [];
 
   if (!raw.trim()) {
@@ -813,12 +848,15 @@ export function parseGeneratedEtsyListing(raw: string): ValidationResult<EtsyLis
     };
   }
 
-  return validateEtsyListing(parsed, { requireAllTags: true });
+  return validateEtsyListing(parsed, {
+    requireAllTags: true,
+    requireDescriptionTargets: options?.requireDescriptionTargets,
+  });
 }
 
 export function validateEtsyListing(
   listing: unknown,
-  options?: { requireAllTags?: boolean }
+  options?: { requireAllTags?: boolean; requireDescriptionTargets?: boolean }
 ): ValidationResult<EtsyListingDraft> {
   if (!listing || typeof listing !== 'object') {
     return {
@@ -870,6 +908,18 @@ export function validateEtsyListing(
       issues: ['Listing must include exactly 13 unique tags for the high-quality publish flow.'],
       error: 'Generated listing did not include 13 valid tags.',
     };
+  }
+
+  if (options?.requireDescriptionTargets) {
+    const blockingIssues = getBlockingListingIssues(result.data);
+    if (blockingIssues.length > 0) {
+      return {
+        success: false,
+        warnings,
+        issues: blockingIssues,
+        error: 'Generated listing description did not meet Etsy quality requirements.',
+      };
+    }
   }
 
   return {

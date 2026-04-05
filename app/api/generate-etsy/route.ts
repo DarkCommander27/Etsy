@@ -30,10 +30,10 @@ export async function POST(req: NextRequest) {
       // set, so retries get genuinely different angles rather than banging on one prompt.
       const prompt = getEtsyListingPrompt(nicheId, productTypeId, productName, pageSize);
       const retryNote = lastIssues.length && attempt > 1
-        ? `\n\nPrevious attempt issues to fix:\n${lastIssues.slice(0, 6).map((i) => `- ${i}`).join('\n')}\n\nFix all listed issues while keeping the same JSON shape.`
+        ? `\n\nPrevious attempt issues to fix:\n${lastIssues.slice(0, 6).map((i) => `- ${i}`).join('\n')}\n\nFix all listed issues while keeping the same JSON shape. If the description length was wrong, rewrite the full description so it lands comfortably between 230 and 300 words.`
         : '';
       const raw = await generateContent(prompt + retryNote, settings, 'listing');
-      const parsed = parseGeneratedEtsyListing(raw);
+      const parsed = parseGeneratedEtsyListing(raw, { requireDescriptionTargets: true });
 
       if (parsed.success) {
         return NextResponse.json({

@@ -309,7 +309,7 @@ High-value niche keywords to incorporate: ${nicheKeywords}
 SEO rules:
 - Title: exactly under 140 chars, front-load the most searched keywords, include "printable" and "digital download", natural language
 - Tags: EXACTLY 13 tags, each tag under 20 characters, use high-search-volume Etsy keywords, mix broad (e.g. "printable planner") and specific (e.g. "ADHD daily planner") terms
-- Description: 200-350 words. Opening sentence hooks with main keyword. Explain what it is, who it is for, exactly what is included, how to use it. Mention: instant digital download, ${sizeCopy}, print at home or at a print shop. Use natural keyword placement. End with a warm call to action.
+- Description: 200-350 words, but aim for 230-300 words so you stay safely inside range. Opening sentence hooks with main keyword. Explain what it is, who it is for, exactly what is included, how to use it. You MUST include the exact phrase "instant digital download" and explicitly mention PDF format. Mention: ${sizeCopy}, print at home or at a print shop. Use natural keyword placement. End with a warm call to action.
 - Category: return a category_path and taxonomy_id suitable for Etsy digital printables.
 
 Return ONLY valid JSON (no markdown, no code blocks):

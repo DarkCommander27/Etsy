@@ -1,6 +1,6 @@
 import crypto from 'crypto';
 import { deleteStoredJson, getStoredJson, setStoredJson } from '@/lib/storage';
-import { validateEtsyListing } from '@/lib/validation/generated';
+import { STRICT_ETSY_LISTING_VALIDATION, validateEtsyListing } from '@/lib/validation/generated';
 import { sleep } from '@/lib/utils';
 
 const ETSY_REQUEST_TIMEOUT_MS = 20_000;
@@ -174,7 +174,7 @@ export async function createListing(params: CreateListingParams) {
     title: params.title,
     description: params.description,
     tags: params.tags,
-  });
+  }, STRICT_ETSY_LISTING_VALIDATION);
   if (!validated.success) {
     throw new Error(validated.error || validated.issues.join(' '));
   }

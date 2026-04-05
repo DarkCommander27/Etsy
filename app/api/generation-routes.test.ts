@@ -62,6 +62,73 @@ describe('generation route validation', () => {
     });
   });
 
+  it('retries generate-etsy when the first description misses the required word range', async () => {
+    const shortDescription = [
+      'This instant digital download PDF printable planner helps ADHD users organize tasks, spot priorities, and build calmer routines with clear sections they can print and use right away.',
+      ...Array.from({ length: 52 }, (_, index) => `detail${index}`),
+    ].join(' ');
+    const shortListing = JSON.stringify({
+      title: 'ADHD Daily Planner Printable Digital Download',
+      tags: [
+        'adhd planner',
+        'daily planner',
+        'printable pdf',
+        'digital download',
+        'focus planner',
+        'productivity',
+        'task organizer',
+        'instant download',
+        'planner page',
+        'minimal planner',
+        'adhd printable',
+        'life organizer',
+        'daily routine',
+      ],
+      description: shortDescription,
+    });
+    const validDescription = [
+      'This ADHD daily planner printable is an instant digital download designed for adults who need a calmer, more structured way to move through the day.',
+      ...Array.from({ length: 205 }, (_, index) => `detail${index}`),
+      'PDF format included for easy home printing and print-shop use.',
+    ].join(' ');
+    const validListing = JSON.stringify({
+      title: 'ADHD Daily Planner Printable Digital Download',
+      tags: [
+        'adhd planner',
+        'daily planner',
+        'printable pdf',
+        'digital download',
+        'focus planner',
+        'productivity',
+        'task organizer',
+        'instant download',
+        'planner page',
+        'minimal planner',
+        'adhd printable',
+        'life organizer',
+        'daily routine',
+      ],
+      description: validDescription,
+    });
+    mocks.mockGenerateContent
+      .mockResolvedValueOnce(shortListing)
+      .mockResolvedValueOnce(validListing);
+
+    const response = await generateEtsyPost(
+      asNextRequest({
+        nicheId: 'adhd',
+        productTypeId: 'daily-planner',
+        productName: 'ADHD Daily Planner Printable',
+      })
+    );
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(mocks.mockGenerateContent).toHaveBeenCalledTimes(2);
+    expect(mocks.mockGenerateContent.mock.calls[1]?.[0]).toContain('Listing description must be between 200 and 350 words; current count is');
+    expect(data.listing.description).toBe(validDescription);
+  });
+
   it('rejects generate-content requests without a valid selection', async () => {
     const response = await generateContentPost(asNextRequest({ nicheId: 'adhd' }));
     const data = await response.json();

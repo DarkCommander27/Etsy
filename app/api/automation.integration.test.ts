@@ -135,8 +135,16 @@ const listingImages = [1, 2, 3].map((rank) => ({
 
 const validListing = {
   title: 'ADHD Daily Planner Printable Digital Download',
-  description:
-    'Instant digital download in PDF format. This printable planner helps users prioritize tasks and structure their day with practical prompts and clear sections. Includes printable worksheet pages for daily focus, routines, and reflection. Use at home or print shop. Designed for practical daily use and simple planning routines with a compassionate tone and clear layout for readability.',
+  description: [
+    'This ADHD daily planner printable is an instant digital download created for adults who want a calmer, more realistic way to organize work, routines, and daily priorities without feeling buried by cluttered pages or overwhelming productivity systems.',
+    'Inside the PDF format download, you get guided sections for top priorities, focused work blocks, and an end-of-day reset so you can see what matters now, what can wait, and what needs a smaller first step before the day gets noisy.',
+    'The layout is built for buyers who need visual structure, compassionate prompts, and enough writing space to break large tasks into something they can actually start instead of staring at a blank page and losing momentum.',
+    'Use the planner in the morning to map your workload, choose one meaningful win, and reduce decision fatigue before emails, messages, and household demands start pulling your attention in six different directions.',
+    'Later in the day, the check-in area helps you notice what moved forward, what interrupted your focus, and what deserves to become tomorrow\'s first task so important work does not disappear overnight.',
+    'Because this is a printable product, you can keep fresh pages on a clipboard, tuck them into a binder, or print a small stack at once so your routine stays visible and easy to return to.',
+    'Print it at home or use a print shop, and reuse the format whenever you want a simple planning tool that feels supportive, readable, and practical instead of rigid or demanding.',
+    'If you want a daily worksheet that helps you prioritize with more clarity and less pressure, this planner is ready to support steadier focus, better follow-through, and more honest end-of-day reflection.',
+  ].join(' '),
   tags: [
     'adhd planner',
     'daily planner',
@@ -319,5 +327,28 @@ describe('API automation integration', () => {
     expect(mocks.mockCreateListing).toHaveBeenCalledTimes(1);
     expect(mocks.mockUploadListingFile).toHaveBeenCalledTimes(1);
     expect(mocks.mockUploadListingImage).toHaveBeenCalledTimes(3);
+  });
+
+  it('blocks publish when the Etsy listing description misses strict requirements', async () => {
+    const publishRes = await publishPost(
+      asNextRequest({
+        ...validListing,
+        description: [
+          'This ADHD daily planner printable gives buyers a clean layout for priorities, focus blocks, and reflection prompts they can use every morning.',
+          ...Array.from({ length: 190 }, (_, index) => `detail${index}`),
+        ].join(' '),
+        price: 5,
+        shopId: '12345',
+        apiKey: 'test-key',
+        listingImages,
+      })
+    );
+
+    expect(publishRes.status).toBe(422);
+    const publishData = await publishRes.json();
+    expect(String(publishData.error)).toContain('Generated listing description did not meet Etsy quality requirements.');
+    expect(publishData.details).toContain('Listing description must include the exact phrase "instant digital download".');
+    expect(publishData.details).toContain('Listing description must explicitly mention PDF format.');
+    expect(mocks.mockCreateListing).not.toHaveBeenCalled();
   });
 });

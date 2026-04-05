@@ -190,6 +190,39 @@ describe('validateEtsyListing', () => {
     expect(result.warnings.some((w) => w.includes('trimmed'))).toBe(true);
   });
 
+  it('rejects strict generation listings when the description is too short', () => {
+    const shortButLongEnoughDescription = [
+      'This instant digital download PDF printable planner helps ADHD users structure tasks, reduce overwhelm, and stay focused with guided sections they can print today.',
+      ...Array.from({ length: 52 }, (_, index) => `detail${index}`),
+    ].join(' ');
+    const result = validateEtsyListing(
+      {
+        title: 'ADHD Daily Planner Printable Digital Download',
+        description: shortButLongEnoughDescription,
+        tags: [
+          'adhd planner',
+          'daily planner',
+          'printable pdf',
+          'digital download',
+          'focus planner',
+          'productivity',
+          'task organizer',
+          'instant download',
+          'planner page',
+          'minimal planner',
+          'adhd printable',
+          'life organizer',
+          'daily routine',
+        ],
+      },
+      { requireAllTags: true, requireDescriptionTargets: true }
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBe('Generated listing description did not meet Etsy quality requirements.');
+    expect(result.issues.some((issue) => issue.startsWith('Listing description must be between 200 and 350 words; current count is '))).toBe(true);
+  });
+
   it('rejects generic listing copy', () => {
     const result = validateEtsyListing(
       {
