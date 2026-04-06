@@ -7,6 +7,7 @@ import { PRODUCT_QUALITY_MIN_SCORE, evaluateProductQuality } from '@/lib/validat
 import { CONTENT_VARIATIONS, ContentVariationId } from '@/lib/ai/prompts';
 import { getSettings } from '@/lib/settings';
 import { EtsyListing, ListingImageMeta } from '@/lib/types';
+import { getApiErrorMessage, readJsonResponse } from '@/lib/utils';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
@@ -134,11 +135,6 @@ interface ProductNameIdea {
 
 type ContentQualityTemplateId = 'default' | 'best-quality';
 
-function formatApiError(data: { error?: string; details?: string[] }, fallback: string): string {
-  const details = Array.isArray(data.details) ? data.details : [];
-  return [data.error || fallback, ...details].join(' ');
-}
-
 function GenerateContent() {
   const searchParams = useSearchParams();
   const queryNicheId = searchParams.get('niche') || '';
@@ -243,6 +239,28 @@ function GenerateContent() {
     setStep(2);
   }, [queryNicheId, queryProductTypeId]);
 
+  const getResolvedProductTitle = useCallback((preferredContent?: Record<string, unknown> | null): string => {
+    const preferredTitle = preferredContent && typeof preferredContent.title === 'string'
+      ? preferredContent.title.trim()
+      : '';
+    if (preferredTitle) return preferredTitle;
+
+    if (editableContent.trim()) {
+      try {
+        const parsed = JSON.parse(editableContent) as Record<string, unknown>;
+        const parsedTitle = typeof parsed.title === 'string' ? parsed.title.trim() : '';
+        if (parsedTitle) return parsedTitle;
+      } catch {
+        // Ignore parse errors here — callers that require valid JSON already handle them separately.
+      }
+    }
+
+    const currentContentTitle = content && typeof content.title === 'string' ? content.title.trim() : '';
+    if (currentContentTitle) return currentContentTitle;
+
+    return (title || product?.name || '').trim();
+  }, [editableContent, content, title, product]);
+
   // Check Etsy connection once on mount
   useEffect(() => {
     fetch('/api/etsy/status')
@@ -263,13 +281,14 @@ function GenerateContent() {
     setEtsyError('');
     setListingWarnings([]);
     try {
+      const resolvedProductTitle = getResolvedProductTitle();
       const res = await fetch('/api/generate-etsy', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nicheId, productTypeId, productName: title || product?.name, pageSize, settings: getSettings() }),
+        body: JSON.stringify({ nicheId, productTypeId, productName: resolvedProductTitle, referenceTitle: resolvedProductTitle, pageSize, settings: getSettings() }),
       });
-      const data = await res.json();
-      if (!res.ok || data.error) throw new Error(formatApiError(data, 'Failed to generate Etsy listing'));
+      const data = await readJsonResponse<{ error?: string; details?: string[]; listing?: EtsyListing; warnings?: string[] }>(res);
+      if (!res.ok || data?.error || !data?.listing) throw new Error(getApiErrorMessage(data, 'Failed to generate Etsy listing'));
       setEtsyListing(data.listing);
       setListingWarnings(Array.isArray(data.warnings) ? data.warnings : []);
       return data.listing as EtsyListing;
@@ -279,7 +298,7 @@ function GenerateContent() {
     } finally {
       setEtsyLoading(false);
     }
-  }, [nicheId, productTypeId, title, product, pageSize]);
+  }, [nicheId, productTypeId, pageSize, getResolvedProductTitle]);
 
   // Auto-generate Etsy listing when entering step 6
   useEffect(() => {
@@ -310,25 +329,39 @@ function GenerateContent() {
           settings: getSettings(),
         }),
       });
-      const data = await res.json();
+      const data = await readJsonResponse<{
+        error?: string;
+        details?: string[];
+        content?: Record<string, unknown>;
+        warnings?: string[];
+        qualityScore?: number;
+        qualityIssues?: string[];
+        bestCandidate?: {
+          content?: Record<string, unknown>;
+          qualityScore?: number;
+          warnings?: string[];
+          qualityIssues?: string[];
+        };
+      }>(res);
       // 422 with a bestCandidate means all attempts fell below the quality threshold —
       // use the closest result rather than surfacing an error to the user.
-      if (res.status === 422 && data.bestCandidate) {
-        const bc = data.bestCandidate;
-        setContent(bc.content);
-        setEditableContent(JSON.stringify(bc.content, null, 2));
+      const bestCandidate = data?.bestCandidate;
+      if (res.status === 422 && bestCandidate?.content) {
+        setContent(bestCandidate.content);
+        setEditableContent(JSON.stringify(bestCandidate.content, null, 2));
         setContentWarnings([
-          `Quality score ${bc.qualityScore}/100 was below target. Review carefully before publishing.`,
-          ...(Array.isArray(bc.warnings) ? bc.warnings : []),
+          `Quality score ${bestCandidate.qualityScore}/100 was below target. Review carefully before publishing.`,
+          ...(Array.isArray(bestCandidate.warnings) ? bestCandidate.warnings : []),
         ]);
-        setQualityScore(Number.isFinite(Number(bc.qualityScore)) ? Number(bc.qualityScore) : null);
-        setQualityIssues(Array.isArray(bc.qualityIssues) ? bc.qualityIssues : []);
+        setQualityScore(Number.isFinite(Number(bestCandidate.qualityScore)) ? Number(bestCandidate.qualityScore) : null);
+        setQualityIssues(Array.isArray(bestCandidate.qualityIssues) ? bestCandidate.qualityIssues : []);
         setStep(5);
         return;
       }
-      if (!res.ok || data.error) throw new Error(formatApiError(data, 'Failed to generate content'));
-      setContent(data.content);
-      setEditableContent(JSON.stringify(data.content, null, 2));
+      if (!res.ok || data?.error || !data?.content) throw new Error(getApiErrorMessage(data, 'Failed to generate content'));
+      const generatedContent = data.content;
+      setContent(generatedContent);
+      setEditableContent(JSON.stringify(generatedContent, null, 2));
       setContentWarnings(Array.isArray(data.warnings) ? data.warnings : []);
       setQualityScore(Number.isFinite(Number(data.qualityScore)) ? Number(data.qualityScore) : null);
       setQualityIssues(Array.isArray(data.qualityIssues) ? data.qualityIssues : []);
@@ -350,9 +383,10 @@ function GenerateContent() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ nicheId, productTypeId, customTitle: title }),
       });
-      const data = await res.json();
-      if (!res.ok || data.error) throw new Error(formatApiError(data, 'Failed to generate product name ideas'));
-      setTitleIdeas(Array.isArray(data.ideas) ? data.ideas : []);
+      const data = await readJsonResponse<{ error?: string; details?: string[]; ideas?: ProductNameIdea[] }>(res);
+      if (!res.ok || data?.error) throw new Error(getApiErrorMessage(data, 'Failed to generate product name ideas'));
+      const ideas = Array.isArray(data?.ideas) ? data.ideas : [];
+      setTitleIdeas(ideas);
     } catch (e) {
       setTitleIdeas([]);
       setTitleIdeasError(e instanceof Error ? e.message : 'Failed to generate product name ideas');
@@ -374,21 +408,22 @@ function GenerateContent() {
       const quality = evaluateProductQuality(finalContent as Parameters<typeof evaluateProductQuality>[0]);
       setQualityScore(quality.score);
       setQualityIssues(quality.issues);
+      const resolvedProductTitle = getResolvedProductTitle(finalContent as Record<string, unknown>);
       const res = await fetch('/api/generate-pdf', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nicheId, productTypeId, title: title || product?.name, colorScheme, pageSize, content: finalContent }),
+        body: JSON.stringify({ nicheId, productTypeId, title: resolvedProductTitle, colorScheme, pageSize, content: finalContent }),
       });
       if (!res.ok) {
-        const data = await res.json();
-        throw new Error(formatApiError(data, 'Failed to generate PDF'));
+        const data = await readJsonResponse<unknown>(res);
+        throw new Error(getApiErrorMessage(data, 'Failed to generate PDF'));
       }
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       setPdfUrl(url);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `${(title || product?.name || 'product').replace(/\s+/g, '-')}.pdf`;
+      a.download = `${(resolvedProductTitle || 'product').replace(/\s+/g, '-')}.pdf`;
       a.click();
 
       setAutomationStatus('Generating 3 Etsy listing images...');
@@ -455,12 +490,12 @@ function GenerateContent() {
           settings: getSettings(),
         }),
       });
-      const data = await res.json();
-      if (!res.ok || data.error) throw new Error(formatApiError(data, 'Failed to generate listing images'));
-      const images = Array.isArray(data.images) ? data.images : [];
+      const data = await readJsonResponse<{ error?: string; details?: string[]; images?: ListingImageMeta[]; warnings?: string[]; provider?: string }>(res);
+      if (!res.ok || data?.error) throw new Error(getApiErrorMessage(data, 'Failed to generate listing images'));
+      const images = Array.isArray(data?.images) ? data.images : [];
       setGeneratedImages(images);
-      setImageWarnings(Array.isArray(data.warnings) ? data.warnings : []);
-      setImageProviderMode(data.provider === 'openai' ? data.provider : null);
+      setImageWarnings(Array.isArray(data?.warnings) ? data.warnings : []);
+      setImageProviderMode(data?.provider === 'openai' ? data.provider : null);
       return images;
     } catch (e) {
       setImageWarnings([e instanceof Error ? e.message : 'Failed to generate listing images']);
@@ -492,12 +527,13 @@ function GenerateContent() {
           throw new Error('Edited JSON is invalid. Fix it or switch back to preview before publishing.');
         }
       }
+      const resolvedProductTitle = getResolvedProductTitle(finalContent as Record<string, unknown>);
       const images = options?.images || generatedImages;
       const idempotencyKey = [
         s.etsyShopId || 'shop',
         nicheId || 'niche',
         productTypeId || 'product',
-        title || product?.name || 'title',
+        resolvedProductTitle || 'title',
         listingToPublish.title,
         String(parseFloat(etsyPrice) || 5.0),
         images
@@ -517,12 +553,12 @@ function GenerateContent() {
           price: parseFloat(etsyPrice) || 5.0,
           shopId: s.etsyShopId,
           idempotencyKey,
-          pdfOptions: { pageSize, colorScheme, title: title || product?.name, nicheId, productTypeId, content: finalContent },
+          pdfOptions: { pageSize, colorScheme, title: resolvedProductTitle, nicheId, productTypeId, content: finalContent },
           listingImages: images,
         }),
       });
-      const data = await res.json();
-      if (!res.ok || data.error) throw new Error(formatApiError(data, 'Failed to publish to Etsy'));
+      const data = await readJsonResponse<{ error?: string; details?: string[]; warnings?: string[]; listing?: { listing_id?: number } }>(res);
+      if (!res.ok || data?.error || !data?.listing?.listing_id) throw new Error(getApiErrorMessage(data, 'Failed to publish to Etsy'));
       const allPublishWarnings = Array.isArray(data.warnings) ? data.warnings : [];
       setPublishWarnings(allPublishWarnings);
       setEtsyPublished({ listing_id: data.listing?.listing_id });

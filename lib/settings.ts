@@ -9,3 +9,7 @@ export function getSettings(): Record<string, unknown> {
     return {};
   }
 }
+
+export function getSafeSearchParam(value: string | null): string {
+  return typeof value === 'string' ? value : '';
+}

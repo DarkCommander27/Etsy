@@ -210,12 +210,78 @@ export function getPublishIdempotency(key: string, maxAgeMs: number): { listing_
   };
 }
 
-export function setPublishIdempotency(key: string, listingId: number, maxAgeMs: number, maxEntries: number): void {
+export type PublishIdempotencyClaim =
+  | { status: 'claimed' }
+  | { status: 'in-progress'; createdAt: string }
+  | { status: 'completed'; listing_id: number; createdAt: string };
+
+function isOlderThan(timestamp: string, maxAgeMs: number): boolean {
+  const parsed = Date.parse(timestamp);
+  if (!Number.isFinite(parsed)) return true;
+  return Date.now() - parsed >= maxAgeMs;
+}
+
+export function claimPublishIdempotency(key: string, maxAgeMs: number, inProgressMaxAgeMs = Math.min(maxAgeMs, 10 * 60 * 1000)): PublishIdempotencyClaim {
+  prunePublishIdempotency(maxAgeMs, 0);
+  const db = getStorageDb();
+  const now = new Date().toISOString();
+
+  const claim = db.transaction((): PublishIdempotencyClaim => {
+    const inserted = db.prepare(
+      'INSERT OR IGNORE INTO publish_idempotency (key, listing_id, created_at) VALUES (?, 0, ?)'
+    ).run(key, now);
+
+    if (inserted.changes > 0) {
+      return { status: 'claimed' };
+    }
+
+    const row = db.prepare(
+      'SELECT listing_id, created_at FROM publish_idempotency WHERE key = ? LIMIT 1'
+    ).get(key) as { listing_id: number; created_at: string } | undefined;
+
+    if (!row) {
+      db.prepare('INSERT INTO publish_idempotency (key, listing_id, created_at) VALUES (?, 0, ?)').run(key, now);
+      return { status: 'claimed' };
+    }
+
+    if (row.listing_id > 0) {
+      return {
+        status: 'completed',
+        listing_id: row.listing_id,
+        createdAt: row.created_at,
+      };
+    }
+
+    if (inProgressMaxAgeMs > 0 && isOlderThan(row.created_at, inProgressMaxAgeMs)) {
+      const reclaimed = db.prepare(
+        'UPDATE publish_idempotency SET created_at = ? WHERE key = ? AND listing_id = 0 AND created_at = ?'
+      ).run(now, key, row.created_at);
+
+      if (reclaimed.changes > 0) {
+        return { status: 'claimed' };
+      }
+    }
+
+    return {
+      status: 'in-progress',
+      createdAt: row.created_at,
+    };
+  });
+
+  return claim();
+}
+
+export function completePublishIdempotency(key: string, listingId: number, maxAgeMs: number, maxEntries: number): void {
   const db = getStorageDb();
   db.prepare(
     'INSERT OR REPLACE INTO publish_idempotency (key, listing_id, created_at) VALUES (?, ?, ?)'
   ).run(key, listingId, new Date().toISOString());
   prunePublishIdempotency(maxAgeMs, maxEntries);
+}
+
+export function releasePublishIdempotency(key: string): void {
+  const db = getStorageDb();
+  db.prepare('DELETE FROM publish_idempotency WHERE key = ? AND listing_id = 0').run(key);
 }
 
 export function resetStorageForTests(): void {

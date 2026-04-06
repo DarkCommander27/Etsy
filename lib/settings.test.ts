@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { getSettings } from './settings';
+import { getSafeSearchParam, getSettings } from './settings';
 
 function createLocalStorageMock(value: string | null) {
   return {
@@ -22,5 +22,10 @@ describe('getSettings', () => {
     vi.stubGlobal('localStorage', createLocalStorageMock('{invalid json'));
 
     expect(getSettings()).toEqual({});
+  });
+
+  it('returns search params as-is without double decoding', () => {
+    expect(getSafeSearchParam('50% complete')).toBe('50% complete');
+    expect(getSafeSearchParam(null)).toBe('');
   });
 });

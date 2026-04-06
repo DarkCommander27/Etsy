@@ -5,6 +5,7 @@ import { getNicheById, getProductById } from '@/lib/niches';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Spinner } from '@/components/ui/Spinner';
+import { readJsonResponse } from '@/lib/utils';
 
 type BadgeVariant = 'default' | 'blue' | 'purple' | 'teal' | 'amber' | 'green' | 'slate' | 'red';
 const BADGE_VARIANTS = new Set<BadgeVariant>(['default', 'blue', 'purple', 'teal', 'amber', 'green', 'slate', 'red']);
@@ -30,14 +31,14 @@ export default function HistoryPage() {
   useEffect(() => {
     fetch('/api/history')
       .then(async (r) => {
-        const data = await r.json();
+        const data = await readJsonResponse<{ error?: string; history?: HistoryEntry[] }>(r);
         if (!r.ok) {
-          throw new Error(typeof data.error === 'string' ? data.error : 'Could not load history.');
+          throw new Error(typeof data?.error === 'string' ? data.error : `Could not load history (${r.status}).`);
         }
         return data;
       })
-      .then(({ history: h }) => {
-        setHistory(Array.isArray(h) ? h : []);
+      .then((data) => {
+        setHistory(Array.isArray(data?.history) ? data.history : []);
         setHistoryError('');
       })
       .catch((err) => {

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getConfiguredEtsyApiKey, getPKCE, saveTokens, clearPKCE, fetchWithRetry, EtsyTokens } from '@/lib/etsy/client';
+import { readJsonResponse } from '@/lib/utils';
 
 export async function GET(req: NextRequest) {
   const code = req.nextUrl.searchParams.get('code');
@@ -55,8 +56,8 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  const data = await res.json() as Record<string, unknown>;
-  if (typeof data.access_token !== 'string' || typeof data.expires_in !== 'number' || typeof data.refresh_token !== 'string') {
+  const data = await readJsonResponse<Record<string, unknown>>(res);
+  if (!data || typeof data.access_token !== 'string' || typeof data.expires_in !== 'number' || typeof data.refresh_token !== 'string') {
     return NextResponse.redirect(
       `${req.nextUrl.origin}/settings?etsy_error=${encodeURIComponent('Token exchange returned an unexpected response. Please try again.')}`
     );

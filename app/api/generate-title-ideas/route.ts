@@ -1,11 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateProductNameIdeas } from '@/lib/etsy/titleSuggestions';
 import { getNicheById, getProductById } from '@/lib/niches';
+import { readRequestJson } from '@/lib/utils';
 import { validateProductSelectionRequest } from '@/lib/validation/generated';
 
 export async function POST(req: NextRequest) {
+  const parsedBody = await readRequestJson<unknown>(req);
+  if (!parsedBody.ok) {
+    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+  }
+
   try {
-    const body: unknown = await req.json();
+    const body: unknown = parsedBody.data;
     const rawBody = body && typeof body === 'object' ? body as Record<string, unknown> : {};
     const requestValidation = validateProductSelectionRequest(body);
     const nicheId = requestValidation.data?.nicheId;

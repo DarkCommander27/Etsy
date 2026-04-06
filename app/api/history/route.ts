@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { getHistory, addHistoryEntry, HistoryEntry } from '@/lib/db';
+import { readRequestJson } from '@/lib/utils';
 
 const historyEntrySchema = z.object({
   id: z.string(),
@@ -33,8 +34,13 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  const parsedBody = await readRequestJson<unknown>(req);
+  if (!parsedBody.ok) {
+    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+  }
+
   try {
-    const body: unknown = await req.json();
+    const body: unknown = parsedBody.data;
     const parsed = historyEntrySchema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json({ error: 'Invalid history entry', details: parsed.error.flatten() }, { status: 400 });

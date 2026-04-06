@@ -6,6 +6,7 @@ import {
   evaluateProductQuality,
   validateEtsyListingGenerationRequest,
   validateEtsyListing,
+  validateListingTitleAgainstReference,
   validateListingImageRequest,
   validateProductSelectionRequest,
 } from './generated';
@@ -238,6 +239,24 @@ describe('validateEtsyListing', () => {
     expect(result.data?.tags.length).toBe(2);
     expect(result.warnings.some((w) => w.includes('Duplicate tags'))).toBe(true);
     expect(result.warnings.some((w) => w.includes('trimmed'))).toBe(true);
+  });
+
+  it('rejects listing titles that switch product type even when other words overlap', () => {
+    const issues = validateListingTitleAgainstReference(
+      'Daily Journal Printable Digital Download',
+      'Daily Planner Printable'
+    );
+
+    expect(issues.some((issue) => issue.includes('different product type'))).toBe(true);
+  });
+
+  it('accepts listing titles that stay within the same product type', () => {
+    const issues = validateListingTitleAgainstReference(
+      'ADHD Daily Planner Printable Digital Download',
+      'ADHD Daily Planner Printable'
+    );
+
+    expect(issues).toEqual([]);
   });
 
   it('rejects strict generation listings when the description is too short', () => {

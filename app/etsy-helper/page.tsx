@@ -7,6 +7,7 @@ import { Select } from '@/components/ui/Select';
 import { Spinner } from '@/components/ui/Spinner';
 import { getSettings } from '@/lib/settings';
 import type { EtsyListing } from '@/lib/types';
+import { getApiErrorMessage, readJsonResponse } from '@/lib/utils';
 
 export default function EtsyHelperPage() {
   const [nicheId, setNicheId] = useState('');
@@ -34,8 +35,10 @@ export default function EtsyHelperPage() {
           settings: getSettings(),
         }),
       });
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
+      const data = await readJsonResponse<{ error?: string; details?: string[]; listing?: EtsyListing }>(res);
+      if (!res.ok || data?.error || !data?.listing) {
+        throw new Error(getApiErrorMessage(data, 'Failed to generate listing'));
+      }
       setListing(data.listing);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to generate listing');

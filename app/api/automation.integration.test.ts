@@ -15,11 +15,13 @@ const mocks = vi.hoisted(() => ({
   mockReadFileSync: vi.fn(),
   mockWriteFileSync: vi.fn(),
   mockMkdirSync: vi.fn(),
-  mockGetPublishIdempotency: vi.fn(),
-  mockSetPublishIdempotency: vi.fn(),
+  mockClaimPublishIdempotency: vi.fn(),
+  mockCompletePublishIdempotency: vi.fn(),
+  mockReleasePublishIdempotency: vi.fn(),
 }));
 
 let idempotencyCache: Record<string, { listing_id: number; createdAt: string }> = {};
+let idempotencyClaims = new Set<string>();
 
 vi.mock('@/lib/ai/client', () => ({
   generateContent: mocks.mockGenerateContent,
@@ -49,8 +51,9 @@ vi.mock('@/lib/etsy/client', () => ({
 }));
 
 vi.mock('@/lib/storage', () => ({
-  getPublishIdempotency: mocks.mockGetPublishIdempotency,
-  setPublishIdempotency: mocks.mockSetPublishIdempotency,
+  claimPublishIdempotency: mocks.mockClaimPublishIdempotency,
+  completePublishIdempotency: mocks.mockCompletePublishIdempotency,
+  releasePublishIdempotency: mocks.mockReleasePublishIdempotency,
 }));
 
 vi.mock('fs', () => ({
@@ -76,6 +79,14 @@ function asNextRequest(body: unknown): NextRequest {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
+  }) as unknown as NextRequest;
+}
+
+function asInvalidJsonNextRequest(): NextRequest {
+  return new Request('http://localhost/api/test', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: '{invalid json',
   }) as unknown as NextRequest;
 }
 
@@ -166,15 +177,37 @@ describe('API automation integration', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     idempotencyCache = {};
+    idempotencyClaims = new Set<string>();
     mocks.mockGetContentPrompt.mockReturnValue('PROMPT');
     mocks.mockGeneratePdf.mockResolvedValue(new Uint8Array([37, 80, 68, 70]));
     mocks.mockAddHistoryEntry.mockImplementation(() => undefined);
-    mocks.mockGetPublishIdempotency.mockImplementation((key: string) => idempotencyCache[key] || null);
-    mocks.mockSetPublishIdempotency.mockImplementation((key: string, listingId: number) => {
+    mocks.mockClaimPublishIdempotency.mockImplementation((key: string) => {
+      const existing = idempotencyCache[key];
+      if (existing) {
+        return {
+          status: 'completed',
+          listing_id: existing.listing_id,
+          createdAt: existing.createdAt,
+        };
+      }
+      if (idempotencyClaims.has(key)) {
+        return {
+          status: 'in-progress',
+          createdAt: new Date().toISOString(),
+        };
+      }
+      idempotencyClaims.add(key);
+      return { status: 'claimed' };
+    });
+    mocks.mockCompletePublishIdempotency.mockImplementation((key: string, listingId: number) => {
+      idempotencyClaims.delete(key);
       idempotencyCache[key] = {
         listing_id: listingId,
         createdAt: new Date().toISOString(),
       };
+    });
+    mocks.mockReleasePublishIdempotency.mockImplementation((key: string) => {
+      idempotencyClaims.delete(key);
     });
     mocks.mockExistsSync.mockImplementation(() => {
       return true;
@@ -330,6 +363,46 @@ describe('API automation integration', () => {
     expect(mocks.mockUploadListingImage).toHaveBeenCalledTimes(3);
   });
 
+  it('blocks a second in-flight publish for the same idempotency key', async () => {
+    const idempotencyKey = 'shop::adhd::daily-planner::in-flight-test';
+    const createListingDeferred: { resolve?: (value: { listing_id: number }) => void } = {};
+    mocks.mockCreateListing.mockImplementationOnce(() => new Promise<{ listing_id: number }>((resolve) => {
+      createListingDeferred.resolve = resolve;
+    }));
+
+    const publishPayload = {
+      ...validListing,
+      price: 5,
+      shopId: '12345',
+      apiKey: 'test-key',
+      idempotencyKey,
+      pdfOptions: {
+        pageSize: 'letter',
+        title: highQualityContent.title,
+        nicheId: 'adhd',
+        productTypeId: 'daily-planner',
+        content: highQualityContent,
+      },
+      listingImages,
+    };
+
+    const firstPublishPromise = publishPost(asNextRequest(publishPayload));
+    await vi.waitFor(() => {
+      expect(mocks.mockCreateListing).toHaveBeenCalledTimes(1);
+    });
+
+    const secondRes = await publishPost(asNextRequest(publishPayload));
+    expect(secondRes.status).toBe(409);
+    const secondData = await secondRes.json();
+    expect(String(secondData.error)).toContain('Publish already in progress');
+    expect(mocks.mockCreateListing).toHaveBeenCalledTimes(1);
+
+    expect(createListingDeferred.resolve).toBeTypeOf('function');
+    createListingDeferred.resolve?.({ listing_id: 123456 });
+    const firstRes = await firstPublishPromise;
+    expect(firstRes.status).toBe(200);
+  });
+
   it('blocks publish when the Etsy listing description misses strict requirements', async () => {
     const publishRes = await publishPost(
       asNextRequest({
@@ -377,5 +450,146 @@ describe('API automation integration', () => {
     expect(String(publishData.error)).toContain('Listing title no longer matches the PDF/product title.');
     expect(publishData.details.some((issue: string) => issue.includes('must stay aligned with the PDF/product title'))).toBe(true);
     expect(mocks.mockCreateListing).not.toHaveBeenCalled();
+  });
+
+  it('reports PDF generation failures without claiming the Etsy upload failed', async () => {
+    mocks.mockGeneratePdf.mockRejectedValueOnce(new Error('Invalid content structure'));
+
+    const publishRes = await publishPost(
+      asNextRequest({
+        ...validListing,
+        price: 5,
+        shopId: '12345',
+        apiKey: 'test-key',
+        pdfOptions: {
+          pageSize: 'letter',
+          title: highQualityContent.title,
+          nicheId: 'adhd',
+          productTypeId: 'daily-planner',
+          content: highQualityContent,
+        },
+        listingImages,
+      })
+    );
+
+    expect(publishRes.status).toBe(200);
+    const publishData = await publishRes.json();
+    expect(publishData.listing.listing_id).toBe(123456);
+    expect(publishData.warnings.some((warning: string) => warning.includes('PDF generation failed: Invalid content structure'))).toBe(true);
+    expect(publishData.warnings.some((warning: string) => warning.includes('Generate the PDF again before uploading it to Etsy.'))).toBe(true);
+    expect(publishData.warnings.some((warning: string) => warning.includes('PDF upload failed'))).toBe(false);
+    expect(mocks.mockUploadListingFile).not.toHaveBeenCalled();
+  });
+
+  it('uses pdfOptions.content.title when pdfOptions.title is stale', async () => {
+    const publishRes = await publishPost(
+      asNextRequest({
+        ...validListing,
+        price: 5,
+        shopId: '12345',
+        apiKey: 'test-key',
+        pdfOptions: {
+          pageSize: 'letter',
+          title: 'Outdated UI Title',
+          nicheId: 'adhd',
+          productTypeId: 'daily-planner',
+          content: highQualityContent,
+        },
+        listingImages,
+      })
+    );
+
+    expect(publishRes.status).toBe(200);
+    expect(mocks.mockCreateListing).toHaveBeenCalledTimes(1);
+  });
+
+  it('releases the idempotency claim when publish fails before listing creation completes', async () => {
+    mocks.mockCreateListing.mockRejectedValueOnce(new Error('Etsy unavailable'));
+    const idempotencyKey = 'shop::adhd::daily-planner::release-test';
+
+    const firstRes = await publishPost(
+      asNextRequest({
+        ...validListing,
+        price: 5,
+        shopId: '12345',
+        apiKey: 'test-key',
+        idempotencyKey,
+        pdfOptions: {
+          pageSize: 'letter',
+          title: highQualityContent.title,
+          nicheId: 'adhd',
+          productTypeId: 'daily-planner',
+          content: highQualityContent,
+        },
+        listingImages,
+      })
+    );
+
+    expect(firstRes.status).toBe(500);
+    expect(mocks.mockReleasePublishIdempotency).toHaveBeenCalledWith(idempotencyKey);
+
+    mocks.mockCreateListing.mockResolvedValueOnce({ listing_id: 123456 });
+    const secondRes = await publishPost(
+      asNextRequest({
+        ...validListing,
+        price: 5,
+        shopId: '12345',
+        apiKey: 'test-key',
+        idempotencyKey,
+        pdfOptions: {
+          pageSize: 'letter',
+          title: highQualityContent.title,
+          nicheId: 'adhd',
+          productTypeId: 'daily-planner',
+          content: highQualityContent,
+        },
+        listingImages,
+      })
+    );
+
+    expect(secondRes.status).toBe(200);
+  });
+
+  it('rejects an image with url "/" as missing rather than reading the public directory', async () => {
+    // url '/' normalizes to the public root directory itself; resolvePublicPath must return null
+    const imagesWithRootUrl = listingImages.map((img) =>
+      img.rank === 1 ? { ...img, url: '/' } : img
+    );
+
+    const publishRes = await publishPost(
+      asNextRequest({
+        ...validListing,
+        price: 5,
+        shopId: '12345',
+        pdfOptions: {
+          pageSize: 'letter',
+          title: highQualityContent.title,
+          nicheId: 'adhd',
+          productTypeId: 'daily-planner',
+          content: highQualityContent,
+        },
+        listingImages: imagesWithRootUrl,
+      })
+    );
+
+    expect(publishRes.status).toBe(200);
+    const publishData = await publishRes.json();
+    // The rank-1 image should be skipped with a warning, not uploaded
+    expect(publishData.warnings.some((w: string) => w.includes('missing on disk'))).toBe(true);
+    // Only ranks 2 and 3 should be uploaded
+    expect(mocks.mockUploadListingImage).toHaveBeenCalledTimes(2);
+    const uploadedRanks = mocks.mockUploadListingImage.mock.calls.map((call) => call[5]);
+    expect(uploadedRanks).toEqual([2, 3]);
+  });
+
+  it('returns 400 for malformed JSON bodies on image generation and publish routes', async () => {
+    const imagesResponse = await generateImagesPost(asInvalidJsonNextRequest());
+    const publishResponse = await publishPost(asInvalidJsonNextRequest());
+
+    await expect(imagesResponse.json()).resolves.toMatchObject({ error: 'Invalid JSON body' });
+    await expect(publishResponse.json()).resolves.toMatchObject({ error: 'Invalid JSON body' });
+
+    expect(imagesResponse.status).toBe(400);
+    expect(publishResponse.status).toBe(400);
   });
 });

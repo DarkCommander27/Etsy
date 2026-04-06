@@ -1,5 +1,26 @@
 import { getStorageDb } from '@/lib/storage';
 
+function safeParseHistoryJson<T>(value: string | null): T | undefined {
+  if (!value) return undefined;
+
+  try {
+    return JSON.parse(value) as T;
+  } catch {
+    return undefined;
+  }
+}
+
+function safeStringifyHistoryJson(value: unknown): string | null {
+  if (value === undefined) return null;
+
+  try {
+    const serialized = JSON.stringify(value);
+    return typeof serialized === 'string' ? serialized : null;
+  } catch {
+    return null;
+  }
+}
+
 export interface HistoryEntry {
   id: string;
   nicheId: string;
@@ -48,8 +69,8 @@ export function getHistory(): HistoryEntry[] {
     colorScheme: row.color_scheme,
     pageSize: row.page_size,
     createdAt: row.created_at,
-    content: row.content_json ? JSON.parse(row.content_json) : undefined,
-    generatedImages: row.generated_images_json ? JSON.parse(row.generated_images_json) : undefined,
+    content: safeParseHistoryJson(row.content_json),
+    generatedImages: safeParseHistoryJson(row.generated_images_json),
   }));
 }
 
@@ -69,8 +90,8 @@ export async function addHistoryEntry(entry: HistoryEntry): Promise<void> {
     color_scheme: entry.colorScheme,
     page_size: entry.pageSize,
     created_at: entry.createdAt,
-    content_json: entry.content === undefined ? null : JSON.stringify(entry.content),
-    generated_images_json: entry.generatedImages === undefined ? null : JSON.stringify(entry.generatedImages),
+    content_json: safeStringifyHistoryJson(entry.content),
+    generated_images_json: safeStringifyHistoryJson(entry.generatedImages),
   });
 
   db.prepare(`

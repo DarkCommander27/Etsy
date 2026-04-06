@@ -4,11 +4,13 @@ import path from 'path';
 import { createListing, getConfiguredEtsyApiKey, uploadListingFile, uploadListingImage } from '@/lib/etsy/client';
 import { generatePDF, PDFOptions } from '@/lib/pdf/generator';
 import { saveOutputFolder } from '@/lib/output';
-import { getPublishIdempotency, setPublishIdempotency } from '@/lib/storage';
+import { claimPublishIdempotency, completePublishIdempotency, releasePublishIdempotency } from '@/lib/storage';
+import { readRequestJson } from '@/lib/utils';
 import { PRODUCT_QUALITY_MIN_SCORE, STRICT_ETSY_LISTING_VALIDATION, evaluateNichePublishChecklist, evaluateProductQuality, validateEtsyListing, validateListingImageMeta, validateListingTitleAgainstReference, validateProductContent } from '@/lib/validation/generated';
 
 const IDEMPOTENCY_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const IDEMPOTENCY_MAX_ENTRIES = 2000;
+const IDEMPOTENCY_IN_PROGRESS_TTL_MS = 10 * 60 * 1000;
 
 function resolvePublicPath(url: string): string | null {
   if (!url.startsWith('/')) return null;
@@ -16,45 +18,42 @@ function resolvePublicPath(url: string): string | null {
   const candidate = path.join(process.cwd(), 'public', cleaned);
   const normalized = path.normalize(candidate);
   const publicRoot = path.normalize(path.join(process.cwd(), 'public'));
-  if (!normalized.startsWith(publicRoot + path.sep) && normalized !== publicRoot) return null;
+  if (!normalized.startsWith(publicRoot + path.sep)) return null;
   return normalized;
 }
 
 export async function POST(req: NextRequest) {
+  let claimedIdempotencyKey: string | null = null;
+
+  const parsedBody = await readRequestJson<{
+    title: string;
+    description: string;
+    tags: string[];
+    taxonomyId?: number;
+    price: number;
+    shopId: string;
+    idempotencyKey?: string;
+    pdfOptions?: PDFOptions;
+    listingImages?: Array<{
+      id: string;
+      rank: number;
+      filename: string;
+      url: string;
+      width: number;
+      height: number;
+      prompt: string;
+      createdAt: string;
+    }>;
+  }>(req);
+  if (!parsedBody.ok) {
+    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+  }
+
   try {
-    const body = await req.json() as {
-      title: string;
-      description: string;
-      tags: string[];
-      taxonomyId?: number;
-      price: number;
-      shopId: string;
-      idempotencyKey?: string;
-      pdfOptions?: PDFOptions;
-      listingImages?: Array<{
-        id: string;
-        rank: number;
-        filename: string;
-        url: string;
-        width: number;
-        height: number;
-        prompt: string;
-        createdAt: string;
-      }>;
-    };
+    const body = parsedBody.data;
     const { title, description, tags, taxonomyId, price, shopId, idempotencyKey, pdfOptions, listingImages } = body;
     const publishWarnings: string[] = [];
-
-    if (idempotencyKey && idempotencyKey.trim().length >= 8) {
-      const existing = getPublishIdempotency(idempotencyKey, IDEMPOTENCY_TTL_MS);
-      if (existing) {
-        return NextResponse.json({
-          listing: { listing_id: existing.listing_id },
-          warnings: ['Returned existing draft from idempotency cache to avoid duplicate publish.'],
-          idempotent: true,
-        });
-      }
-    }
+    const normalizedIdempotencyKey = typeof idempotencyKey === 'string' ? idempotencyKey.trim() : '';
 
     const effectiveApiKey = getConfiguredEtsyApiKey();
     if (!effectiveApiKey) {
@@ -76,8 +75,14 @@ export async function POST(req: NextRequest) {
     }
     const listingData = listingValidation.data;
 
-    if (pdfOptions?.title) {
-      const titleIssues = validateListingTitleAgainstReference(listingData.title, String(pdfOptions.title));
+    const referenceTitle = typeof pdfOptions?.content?.title === 'string' && pdfOptions.content.title.trim()
+      ? pdfOptions.content.title.trim()
+      : typeof pdfOptions?.title === 'string'
+        ? pdfOptions.title.trim()
+        : '';
+
+    if (referenceTitle) {
+      const titleIssues = validateListingTitleAgainstReference(listingData.title, referenceTitle);
       if (titleIssues.length > 0) {
         return NextResponse.json(
           { error: 'Listing title no longer matches the PDF/product title.', details: titleIssues, warnings: listingValidation.warnings },
@@ -137,6 +142,30 @@ export async function POST(req: NextRequest) {
       pdfOptions.content = contentValidation.data;
     }
 
+    if (normalizedIdempotencyKey.length >= 8) {
+      const idempotencyClaim = claimPublishIdempotency(
+        normalizedIdempotencyKey,
+        IDEMPOTENCY_TTL_MS,
+        IDEMPOTENCY_IN_PROGRESS_TTL_MS
+      );
+      if (idempotencyClaim.status === 'completed') {
+        return NextResponse.json({
+          listing: { listing_id: idempotencyClaim.listing_id },
+          warnings: ['Returned existing draft from idempotency cache to avoid duplicate publish.'],
+          idempotent: true,
+        });
+      }
+
+      if (idempotencyClaim.status === 'in-progress') {
+        return NextResponse.json(
+          { error: 'Publish already in progress for this idempotency key. Retry the same request in a few seconds.' },
+          { status: 409 }
+        );
+      }
+
+      claimedIdempotencyKey = normalizedIdempotencyKey;
+    }
+
     const listing = await createListing({
       shopId,
       apiKey: effectiveApiKey,
@@ -147,12 +176,24 @@ export async function POST(req: NextRequest) {
       price: parseFloat(String(price)) || 5.0,
     });
 
+    if (claimedIdempotencyKey && listing.listing_id) {
+      completePublishIdempotency(claimedIdempotencyKey, listing.listing_id, IDEMPOTENCY_TTL_MS, IDEMPOTENCY_MAX_ENTRIES);
+    }
+
     // If PDF options provided, generate and upload the file automatically
     if (pdfOptions && listing.listing_id) {
       try {
         const pdfBytes = await generatePDF(pdfOptions);
         const filename = `${listingData.title.replace(/[^a-z0-9]/gi, '-').substring(0, 50)}.pdf`;
-        await uploadListingFile(shopId, listing.listing_id, effectiveApiKey, pdfBytes, filename);
+        try {
+          await uploadListingFile(shopId, listing.listing_id, effectiveApiKey, pdfBytes, filename);
+        } catch (uploadErr) {
+          return NextResponse.json({
+            listing,
+            warnings: [...listingValidation.warnings, `Draft created, but PDF upload failed: ${uploadErr instanceof Error ? uploadErr.message : 'Unknown error'}. Please upload the PDF manually on Etsy.`],
+          });
+        }
+
         try {
           saveOutputFolder({
             title: String(pdfOptions.title || listingData.title || ''),
@@ -168,10 +209,10 @@ export async function POST(req: NextRequest) {
             },
           });
         } catch { /* best-effort: output folder write should never block publish */ }
-      } catch (uploadErr) {
+      } catch (pdfErr) {
         return NextResponse.json({
           listing,
-          warnings: [...listingValidation.warnings, `Draft created, but PDF upload failed: ${uploadErr instanceof Error ? uploadErr.message : 'Unknown error'}. Please upload the PDF manually on Etsy.`],
+          warnings: [...listingValidation.warnings, `Draft created, but PDF generation failed: ${pdfErr instanceof Error ? pdfErr.message : 'Unknown error'}. Generate the PDF again before uploading it to Etsy.`],
         });
       }
     }
@@ -206,12 +247,11 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    if (idempotencyKey && idempotencyKey.trim().length >= 8 && listing.listing_id) {
-      setPublishIdempotency(idempotencyKey, listing.listing_id, IDEMPOTENCY_TTL_MS, IDEMPOTENCY_MAX_ENTRIES);
-    }
-
     return NextResponse.json({ listing, warnings: [...listingValidation.warnings, ...publishWarnings] });
   } catch (err) {
+    if (claimedIdempotencyKey) {
+      releasePublishIdempotency(claimedIdempotencyKey);
+    }
     const msg = err instanceof Error ? err.message : 'Unknown error';
     return NextResponse.json({ error: msg }, { status: 500 });
   }

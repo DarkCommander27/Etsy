@@ -109,6 +109,14 @@ function asNextRequest(body: unknown): NextRequest {
   }) as unknown as NextRequest;
 }
 
+function asInvalidJsonNextRequest(): NextRequest {
+  return new Request('http://localhost/api/test', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: '{invalid json',
+  }) as unknown as NextRequest;
+}
+
 describe('generation route validation', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -193,6 +201,28 @@ describe('generation route validation', () => {
     expect(data.listing.title).toBe('ADHD Daily Planner Printable Digital Download');
   });
 
+  it('uses referenceTitle when validating generated Etsy titles', async () => {
+    const validListing = JSON.stringify({
+      title: 'ADHD Daily Planner Printable Digital Download',
+      tags: LISTING_TAGS,
+      description: buildStrictDescription(230),
+    });
+    mocks.mockGenerateContent.mockResolvedValue(validListing);
+
+    const response = await generateEtsyPost(
+      asNextRequest({
+        nicheId: 'adhd',
+        productTypeId: 'daily-planner',
+        productName: 'Outdated UI Title',
+        referenceTitle: 'ADHD Daily Planner Printable',
+      })
+    );
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.listing.title).toBe('ADHD Daily Planner Printable Digital Download');
+  });
+
   it('rejects generate-content requests without a valid selection', async () => {
     const response = await generateContentPost(asNextRequest({ nicheId: 'adhd' }));
     const data = await response.json();
@@ -241,5 +271,22 @@ describe('generation route validation', () => {
 
     expect(response.status).toBe(400);
     expect(data.error).toBe('nicheId and productTypeId are required.');
+  });
+
+  it('returns 400 for malformed JSON bodies on generation routes', async () => {
+    const contentResponse = await generateContentPost(asInvalidJsonNextRequest());
+    const etsyResponse = await generateEtsyPost(asInvalidJsonNextRequest());
+    const pdfResponse = await generatePdfPost(asInvalidJsonNextRequest());
+    const titleIdeasResponse = await generateTitleIdeasPost(asInvalidJsonNextRequest());
+
+    await expect(contentResponse.json()).resolves.toMatchObject({ error: 'Invalid JSON body' });
+    await expect(etsyResponse.json()).resolves.toMatchObject({ error: 'Invalid JSON body' });
+    await expect(pdfResponse.json()).resolves.toMatchObject({ error: 'Invalid JSON body' });
+    await expect(titleIdeasResponse.json()).resolves.toMatchObject({ error: 'Invalid JSON body' });
+
+    expect(contentResponse.status).toBe(400);
+    expect(etsyResponse.status).toBe(400);
+    expect(pdfResponse.status).toBe(400);
+    expect(titleIdeasResponse.status).toBe(400);
   });
 });

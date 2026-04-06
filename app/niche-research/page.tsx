@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/Input';
 import { Spinner } from '@/components/ui/Spinner';
 import type { NicheResearchResult, TopListing } from '@/lib/nicheResearch';
 import { getSettings } from '@/lib/settings';
+import { getApiErrorMessage, readJsonResponse } from '@/lib/utils';
 
 function isNicheResearchResult(data: unknown): data is NicheResearchResult {
   if (!data || typeof data !== 'object') return false;
@@ -96,10 +97,9 @@ export default function NicheResearchPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ keyword: k, etsyApiKey }),
       });
-      const data: unknown = await res.json();
+      const data = await readJsonResponse<unknown>(res);
       if (!res.ok) {
-        const errData = data as Record<string, unknown>;
-        setError(typeof errData?.error === 'string' ? errData.error : 'Research failed');
+        setError(getApiErrorMessage(data, 'Research failed'));
         return;
       }
       if (!isNicheResearchResult(data)) {

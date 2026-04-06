@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
+import { getSafeSearchParam } from '@/lib/settings';
 
 const STORAGE_KEY = 'etsygen-settings';
 
@@ -56,9 +57,9 @@ function SettingsContent() {
       .catch(() => {});
 
     // Handle OAuth callback results
-    const error = searchParams.get('etsy_error');
+    const error = getSafeSearchParam(searchParams.get('etsy_error'));
     const connected = searchParams.get('etsy_connected');
-    if (error) setEtsyError(decodeURIComponent(error));
+    if (error) setEtsyError(error);
     if (connected === '1') {
       setEtsyConnected(true);
       setEtsySuccess('✅ Etsy connected successfully!');

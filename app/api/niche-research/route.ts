@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { NicheResearchResult, TopListing } from '@/lib/nicheResearch';
+import { readJsonResponse } from '@/lib/utils';
 
 const ETSY_API_BASE = 'https://openapi.etsy.com/v3/application';
 const REQUEST_TIMEOUT_MS = 15_000;
@@ -30,6 +31,18 @@ function demandLevel(avg: number): 'low' | 'medium' | 'high' {
   if (avg < 50) return 'low';
   if (avg < 200) return 'medium';
   return 'high';
+}
+
+function getPriceValue(price: unknown): number | null {
+  if (!price || typeof price !== 'object') return null;
+
+  const record = price as Record<string, unknown>;
+  const amount = record.amount;
+  const divisor = record.divisor;
+  if (typeof amount !== 'number' || !Number.isFinite(amount)) return null;
+  if (typeof divisor !== 'number' || !Number.isFinite(divisor) || divisor <= 0) return null;
+
+  return amount / divisor;
 }
 
 async function fetchWithTimeout(url: string, init: RequestInit): Promise<Response> {
@@ -92,16 +105,23 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const data = await res.json() as {
+  const data = await readJsonResponse<{
     count: number;
     results: Array<{
       listing_id: number;
       title: string;
       num_favorers: number;
       views: number;
-      price?: { amount: number; divisor: number; currency_code: string };
+      price?: { amount?: unknown; divisor?: unknown; currency_code?: unknown };
     }>;
-  };
+  }>(res);
+
+  if (!data || !Array.isArray(data.results) || typeof data.count !== 'number') {
+    return NextResponse.json(
+      { error: 'Etsy API returned an unexpected response.' },
+      { status: 502 }
+    );
+  }
 
   const results = data.results ?? [];
   const totalListings = data.count ?? 0;
@@ -111,16 +131,19 @@ export async function POST(req: NextRequest) {
     : 0;
 
   const pricesWithValues = results
-    .map((r) => r.price ? r.price.amount / r.price.divisor : null)
-    .filter((p): p is number => p !== null);
+    .map((r) => getPriceValue(r.price))
+    .filter((p): p is number => p !== null && Number.isFinite(p));
 
   const avgPrice = pricesWithValues.length > 0
     ? Math.round((pricesWithValues.reduce((s, p) => s + p, 0) / pricesWithValues.length) * 100) / 100
     : 0;
 
   const topListings: TopListing[] = results.slice(0, 5).map((r) => {
-    const priceVal = r.price ? (r.price.amount / r.price.divisor).toFixed(2) : '?';
-    const currency = r.price?.currency_code ?? 'USD';
+    const priceValue = getPriceValue(r.price);
+    const priceVal = priceValue === null ? '?' : priceValue.toFixed(2);
+    const currency = typeof r.price?.currency_code === 'string' && r.price.currency_code.trim()
+      ? r.price.currency_code
+      : 'USD';
     return {
       id: r.listing_id,
       title: r.title,

@@ -1,10 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateAndStoreListingImages } from '@/lib/images/mockup';
+import { readRequestJson } from '@/lib/utils';
 import { validateListingImageRequest } from '@/lib/validation/generated';
 
 export async function POST(req: NextRequest) {
+  const parsedBody = await readRequestJson<unknown>(req);
+  if (!parsedBody.ok) {
+    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+  }
+
   try {
-    const body = await req.json();
+    const body = parsedBody.data;
     const validated = validateListingImageRequest(body);
 
     if (!validated.success) {

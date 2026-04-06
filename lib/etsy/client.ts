@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { deleteStoredJson, getStoredJson, setStoredJson } from '@/lib/storage';
+import { readJsonResponse } from '@/lib/utils';
 import { STRICT_ETSY_LISTING_VALIDATION, validateEtsyListing } from '@/lib/validation/generated';
 import { sleep } from '@/lib/utils';
 
@@ -138,8 +139,8 @@ export async function refreshTokens(apiKey: string): Promise<EtsyTokens | null> 
   }, { retries: 2, timeoutMs: ETSY_REQUEST_TIMEOUT_MS });
 
   if (!res.ok) return null;
-  const data = await res.json() as Record<string, unknown>;
-  if (typeof data.access_token !== 'string' || typeof data.expires_in !== 'number') return null;
+  const data = await readJsonResponse<Record<string, unknown>>(res);
+  if (!data || typeof data.access_token !== 'string' || typeof data.expires_in !== 'number') return null;
   const newTokens: EtsyTokens = {
     access_token: data.access_token,
     refresh_token: (typeof data.refresh_token === 'string' ? data.refresh_token : null) || tokens.refresh_token,
@@ -167,6 +168,17 @@ export interface CreateListingParams {
   tags: string[];
   price: number;
   taxonomyId?: number;
+}
+
+export interface EtsyListingResponse {
+  listing_id: number;
+  [key: string]: unknown;
+}
+
+function isEtsyListingResponse(value: unknown): value is EtsyListingResponse {
+  if (!value || typeof value !== 'object') return false;
+  const listingId = (value as Record<string, unknown>).listing_id;
+  return typeof listingId === 'number' && Number.isInteger(listingId) && listingId > 0;
 }
 
 export async function createListing(params: CreateListingParams) {
@@ -214,7 +226,18 @@ export async function createListing(params: CreateListingParams) {
     throw new Error(await getResponseErrorMessage(res, `Etsy API error: ${res.status}`));
   }
 
-  return res.json();
+  let data: unknown;
+  try {
+    data = await res.json();
+  } catch {
+    throw new Error('Etsy API returned an unreadable listing response.');
+  }
+
+  if (!isEtsyListingResponse(data)) {
+    throw new Error('Etsy API returned an invalid listing response.');
+  }
+
+  return data;
 }
 
 export async function uploadListingFile(

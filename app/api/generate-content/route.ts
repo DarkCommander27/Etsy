@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateContent, AIProviderError, AISettings } from '@/lib/ai/client';
 import { ContentQualityTemplateId, ContentVariationId, getContentPrompt } from '@/lib/ai/prompts';
+import { readRequestJson } from '@/lib/utils';
 import { applyContentQualityRepairs, evaluateProductQuality, parseGeneratedProductContent, PRODUCT_QUALITY_MIN_SCORE, validateProductSelectionRequest } from '@/lib/validation/generated';
 
 const MAX_GENERATION_ATTEMPTS = 8;
@@ -18,8 +19,13 @@ IMPORTANT: Do not rephrase or slightly adjust the previous output. Write complet
 }
 
 export async function POST(req: NextRequest) {
+  const parsedBody = await readRequestJson<unknown>(req);
+  if (!parsedBody.ok) {
+    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+  }
+
   try {
-    const body: unknown = await req.json();
+    const body: unknown = parsedBody.data;
     const rawBody = body && typeof body === 'object' ? body as Record<string, unknown> : {};
     const selection = validateProductSelectionRequest(body);
 

@@ -68,6 +68,21 @@ describe('history route', () => {
     expect(mocks.mockAddHistoryEntry).not.toHaveBeenCalled();
   });
 
+  it('returns 400 for malformed JSON bodies on the POST route', async () => {
+    const malformedReq = new Request('http://localhost/api/history', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{invalid',
+    }) as unknown as NextRequest;
+
+    const response = await POST(malformedReq);
+    const data = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(data.error).toBe('Invalid JSON body');
+    expect(mocks.mockAddHistoryEntry).not.toHaveBeenCalled();
+  });
+
   it('stores valid history payloads', async () => {
     mocks.mockAddHistoryEntry.mockResolvedValue(undefined);
 

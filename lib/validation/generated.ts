@@ -174,6 +174,28 @@ const LISTING_TITLE_GENERIC_TERMS = new Set([
   'planner', 'journal', 'workbook', 'worksheet', 'tracker', 'template', 'checklist', 'cards', 'deck', 'guide', 'page', 'pages',
 ]);
 
+const LISTING_TITLE_TYPE_GROUPS: Record<string, string> = {
+  planner: 'planner',
+  journal: 'journal',
+  workbook: 'workbook',
+  worksheet: 'worksheet',
+  tracker: 'tracker',
+  template: 'template',
+  checklist: 'checklist',
+  cards: 'cards',
+  card: 'cards',
+  deck: 'cards',
+  guide: 'guide',
+  page: 'pages',
+  pages: 'pages',
+  sheet: 'sheet',
+  log: 'log',
+  notes: 'notes',
+  bundle: 'bundle',
+  toolkit: 'toolkit',
+  kit: 'toolkit',
+};
+
 function extractListingTitleTerms(title: string): string[] {
   return title
     .toLowerCase()
@@ -183,10 +205,27 @@ function extractListingTitleTerms(title: string): string[] {
     .filter((term) => term.length >= 3 && !LISTING_TITLE_STOP_WORDS.has(term));
 }
 
+function extractListingTitleTypeGroups(title: string): Set<string> {
+  return new Set(
+    extractListingTitleTerms(title)
+      .map((term) => LISTING_TITLE_TYPE_GROUPS[term])
+      .filter((term): term is string => Boolean(term))
+  );
+}
+
 export function validateListingTitleAgainstReference(listingTitle: string, referenceTitle: string): string[] {
   const listingTerms = new Set(extractListingTitleTerms(listingTitle));
   const referenceTerms = extractListingTitleTerms(referenceTitle);
   if (!referenceTerms.length) return [];
+
+  const listingTypeGroups = extractListingTitleTypeGroups(listingTitle);
+  const referenceTypeGroups = extractListingTitleTypeGroups(referenceTitle);
+  if (referenceTypeGroups.size > 0 && listingTypeGroups.size > 0) {
+    const sharedTypeGroups = [...referenceTypeGroups].filter((group) => listingTypeGroups.has(group));
+    if (sharedTypeGroups.length === 0) {
+      return [`Listing title must stay aligned with the PDF/product title "${referenceTitle}" instead of switching to a different product type.`];
+    }
+  }
 
   const distinctiveReferenceTerms = referenceTerms.filter((term) => !LISTING_TITLE_GENERIC_TERMS.has(term));
   const sharedDistinctive = distinctiveReferenceTerms.filter((term) => listingTerms.has(term));

@@ -1,14 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateContent, AIProviderError, AISettings } from '@/lib/ai/client';
 import { getEtsyListingPrompt } from '@/lib/ai/prompts';
+import { readRequestJson } from '@/lib/utils';
 import { STRICT_ETSY_LISTING_VALIDATION, parseGeneratedEtsyListing, validateEtsyListingGenerationRequest, validateListingTitleAgainstReference } from '@/lib/validation/generated';
 import { getEtsyCategoryForProduct } from '@/lib/etsy/categories';
 
 const MAX_LISTING_ATTEMPTS = 8;
 
 export async function POST(req: NextRequest) {
+  const parsedBody = await readRequestJson<unknown>(req);
+  if (!parsedBody.ok) {
+    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+  }
+
   try {
-    const body: unknown = await req.json();
+    const body: unknown = parsedBody.data;
     const rawBody = body && typeof body === 'object' ? body as Record<string, unknown> : {};
     const requestValidation = validateEtsyListingGenerationRequest(body);
 
@@ -20,6 +26,8 @@ export async function POST(req: NextRequest) {
     }
 
     const { nicheId, productTypeId, productName } = requestValidation.data;
+  const referenceTitle = typeof rawBody.referenceTitle === 'string' ? rawBody.referenceTitle.trim() : '';
+  const titleReference = referenceTitle || productName;
     const settings = rawBody.settings && typeof rawBody.settings === 'object' ? rawBody.settings as AISettings : undefined;
     const pageSize = typeof rawBody.pageSize === 'string' ? rawBody.pageSize : undefined;
     const categoryInfo = getEtsyCategoryForProduct(nicheId, productTypeId, productName);
@@ -36,7 +44,7 @@ export async function POST(req: NextRequest) {
       const parsed = parseGeneratedEtsyListing(raw, STRICT_ETSY_LISTING_VALIDATION);
 
       if (parsed.success && parsed.data) {
-        const titleIssues = validateListingTitleAgainstReference(parsed.data.title, productName);
+        const titleIssues = validateListingTitleAgainstReference(parsed.data.title, titleReference);
         if (titleIssues.length > 0) {
           lastError = 'Generated listing title did not match the underlying product title.';
           lastIssues = titleIssues;
