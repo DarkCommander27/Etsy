@@ -288,7 +288,13 @@ function GenerateContent() {
     setEtsyError('');
     setListingWarnings([]);
     try {
-      const resolvedProductTitle = getResolvedProductTitle();
+      // productName must be non-empty — fall back through every available source
+      // so a stale/restored draft with a missing title never sends an empty string.
+      const resolvedProductTitle =
+        getResolvedProductTitle() ||
+        product?.name ||
+        productTypeId ||
+        'Digital Printable';
       const res = await fetch('/api/generate-etsy', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -309,10 +315,18 @@ function GenerateContent() {
 
   // Auto-generate Etsy listing when entering step 6
   useEffect(() => {
-    if (step === 6 && !etsyListing && !etsyLoading && !etsyError && nicheId && productTypeId) {
+    const canAutoGenerate =
+      step === 6 &&
+      !etsyListing &&
+      !etsyLoading &&
+      !etsyError &&
+      nicheId &&
+      productTypeId &&
+      (getResolvedProductTitle() || product?.name || productTypeId);
+    if (canAutoGenerate) {
       generateEtsyListing();
     }
-  }, [step, etsyListing, etsyLoading, etsyError, nicheId, productTypeId, generateEtsyListing]);
+  }, [step, etsyListing, etsyLoading, etsyError, nicheId, productTypeId, product, generateEtsyListing, getResolvedProductTitle]);
 
   // Restore in-progress draft from localStorage on mount (skipped when URL params are present)
   // eslint-disable-next-line react-hooks/exhaustive-deps
