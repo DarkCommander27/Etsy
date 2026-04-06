@@ -62,14 +62,49 @@ function slugify(text: string): string {
 		.slice(0, 80);
 }
 
+const COLOR_MOOD_DESCRIPTIONS: Record<string, string> = {
+	// ADHD
+	'Calm Blue': 'crisp white background with cool cornflower blue headings and soft sky-blue accents — clean, focused, airy',
+	'Focus Green': 'bright white background with vivid emerald green headings and mint-green highlights — energising and clear',
+	'Energy Orange': 'warm cream background with bold tangerine orange headings and peachy highlights — vibrant and motivating',
+	'Purple Calm': 'pale lavender-white background with deep violet headings and soft lilac accents — serene and structured',
+	// MDD Support
+	'Soft Lavender': 'pale lilac background with rich purple headings and delicate violet accents — gentle and soothing',
+	'Warm Sage': 'soft mint-white background with deep sage green headings and light aqua-green highlights — calm and nurturing',
+	'Dusty Rose': 'blush white background with deep rose headings and soft pink accents — warm, compassionate, and soft',
+	'Sky Blue': 'airy pale blue background with cobalt headings and light azure highlights — open and tranquil',
+	// Anxiety Relief
+	'Ocean Calm': 'soft seafoam white background with deep teal headings and turquoise accents — cool, grounding, and calm',
+	'Misty Grey': 'clean white background with slate grey headings and silver-grey accents — minimal, quiet, uncluttered',
+	'Forest Green': 'pale green-white background with forest green headings and bright leaf-green highlights — grounded and natural',
+	'Sunrise Yellow': 'warm ivory background with golden amber headings and soft yellow accents — gentle, warm, hopeful',
+	// Social Skills
+	'Warm Amber': 'warm cream background with rich amber headings and honey-gold highlights — welcoming and energetic',
+	'Peach Soft': 'soft peach-white background with burnt orange headings and apricot highlights — friendly and approachable',
+	'Mint Fresh': 'crisp white background with vivid green headings and fresh mint accents — lively and open',
+	'Coral Pink': 'blush white background with deep coral-red headings and rose-pink accents — bold and social',
+	// General Life
+	'Clean White': 'pure white background with near-black charcoal headings and neutral grey accents — timeless, editorial, minimal',
+	'Nature Green': 'clean white background with deep forest green headings and bright emerald highlights — fresh and organised',
+	'Navy Blue': 'cool white background with deep navy headings and bright cornflower-blue accents — professional and trustworthy',
+	'Golden Hour': 'warm ivory background with rich brown-gold headings and amber highlights — cosy and premium',
+	// Tech & Dev
+	'Dark Code': 'dark navy background with electric sky-blue headings and bright violet accents — sleek, modern, high-contrast',
+	'Terminal Green': 'deep charcoal-black background with neon green headings and light green highlights — developer terminal aesthetic',
+	'GitHub Grey': 'light off-white background with near-black headings and steel-blue link accents — clean GitHub-style monochrome',
+	'VS Code Blue': 'dark charcoal background with bright Azure-blue headings and medium-blue accents — VS Code dark theme style',
+};
+
 function buildPrompt(request: ListingImageRequest, variation: string): string {
 	const niche = getNicheById(request.nicheId);
 	const product = getProductById(request.nicheId, request.productTypeId);
 	const scheme = request.colorScheme;
 
-	// Describe the printable's purpose so the AI renders plausible content on the page,
-	// not just a generic white rectangle. Colour-mood words work better than raw hex.
-	const colorMood = scheme?.name ? `Color palette: ${scheme.name}.` : '';
+	// Use a descriptive mood string rather than just the palette name so the model
+	// can accurately reproduce the intended colours and feel.
+	const colorMood = scheme?.name
+		? `Color palette: ${COLOR_MOOD_DESCRIPTIONS[scheme.name] ?? scheme.name}.`
+		: '';
 
 	return [
 		'Create a photorealistic Etsy listing image for a digital printable product.',
