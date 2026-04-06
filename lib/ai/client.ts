@@ -97,6 +97,33 @@ function formatProviderError(
   return new AIProviderError(normalizedMessage, status, provider, model);
 }
 
+function isGroqRetryableError(err: unknown): boolean {
+  const status =
+    typeof err === 'object' && err !== null && 'status' in err && typeof (err as { status?: unknown }).status === 'number'
+      ? (err as { status: number }).status
+      : 0;
+  const message =
+    typeof err === 'object' && err !== null && 'message' in err && typeof (err as { message?: unknown }).message === 'string'
+      ? (err as { message: string }).message.toLowerCase()
+      : '';
+
+  if (status === 429) return true; // rate limited — try next model
+
+  if ([400, 404, 503].includes(status)) {
+    return [
+      'model',
+      'not found',
+      'not available',
+      'does not exist',
+      'unsupported',
+      'no body',
+      'invalid',
+    ].some((needle) => message.includes(needle));
+  }
+
+  return false;
+}
+
 function isGeminiRetryableModelError(err: unknown): boolean {
   const status =
     typeof err === 'object' && err !== null && 'status' in err && typeof (err as { status?: unknown }).status === 'number'
@@ -191,14 +218,19 @@ REQUIREMENTS:
 4. Avoid generic hype, empty adjectives, and salesy nonsense.
 5. Return valid JSON only when asked — no markdown fences, no commentary.`;
 
-  // For Groq, fall back to the smaller 8b model (500k TPD limit) when the
-  // primary model exhausts its daily quota (100k TPD for 70b-versatile).
-  const GROQ_FALLBACK_MODEL = 'llama-3.1-8b-instant';
+  // Groq fallback chain: try each model in order until one succeeds.
+  // Covers both rate-limit (429) and model-unavailable (404/400/503) errors.
+  const GROQ_FALLBACK_CHAIN = [
+    'llama-3.3-70b-versatile',
+    'openai/gpt-oss-20b',
+    'meta-llama/llama-4-scout-17b-16e-instruct',
+    'llama-3.1-8b-instant', // always-available last resort
+  ];
   const modelCandidates =
     provider === 'gemini'
       ? Array.from(new Set([model, 'gemini-1.5-flash']))
       : provider === 'groq'
-        ? Array.from(new Set([model, GROQ_FALLBACK_MODEL]))
+        ? Array.from(new Set([model, ...GROQ_FALLBACK_CHAIN]))
         : [model];
 
   let lastErr: unknown;
@@ -222,22 +254,24 @@ REQUIREMENTS:
       return response.choices[0]?.message?.content || '';
     } catch (err) {
       lastErr = err;
-      const isRateLimited =
-        typeof err === 'object' && err !== null && 'status' in err &&
-        (err as { status: number }).status === 429;
+      const errStatus =
+        typeof err === 'object' && err !== null && 'status' in err && typeof (err as { status?: unknown }).status === 'number'
+          ? (err as { status: number }).status
+          : 0;
 
       const canRetryWithNextModel =
         i < modelCandidates.length - 1 &&
         (
           (provider === 'gemini' && isGeminiRetryableModelError(err)) ||
-          (provider === 'groq' && isRateLimited)
+          (provider === 'groq' && isGroqRetryableError(err))
         );
 
       if (!canRetryWithNextModel) {
         throw formatProviderError(err, provider, candidateModel);
       }
 
-      console.warn(`[ai/client] ${provider}/${candidateModel} failed (${isRateLimited ? '429 rate-limit' : 'model error'}), falling back to ${modelCandidates[i + 1]}`);
+      const reason = errStatus === 429 ? '429 rate-limit' : `${errStatus} model unavailable`;
+      console.warn(`[ai/client] ${provider}/${candidateModel} failed (${reason}), trying ${modelCandidates[i + 1]}`);
     }
   }
 
