@@ -302,10 +302,10 @@ function GenerateContent() {
 
   // Auto-generate Etsy listing when entering step 6
   useEffect(() => {
-    if (step === 6 && !etsyListing && !etsyLoading && nicheId && productTypeId) {
+    if (step === 6 && !etsyListing && !etsyLoading && !etsyError && nicheId && productTypeId) {
       generateEtsyListing();
     }
-  }, [step, etsyListing, etsyLoading, nicheId, productTypeId, generateEtsyListing]);
+  }, [step, etsyListing, etsyLoading, etsyError, nicheId, productTypeId, generateEtsyListing]);
 
   function hasOpenAIImageKey(): boolean {
     const settings = getSettings();

@@ -26,8 +26,8 @@ export async function POST(req: NextRequest) {
     }
 
     const { nicheId, productTypeId, productName } = requestValidation.data;
-  const referenceTitle = typeof rawBody.referenceTitle === 'string' ? rawBody.referenceTitle.trim() : '';
-  const titleReference = referenceTitle || productName;
+    const referenceTitle = typeof rawBody.referenceTitle === 'string' ? rawBody.referenceTitle.trim() : '';
+    const titleReference = referenceTitle || productName;
     const settings = rawBody.settings && typeof rawBody.settings === 'object' ? rawBody.settings as AISettings : undefined;
     const pageSize = typeof rawBody.pageSize === 'string' ? rawBody.pageSize : undefined;
     const categoryInfo = getEtsyCategoryForProduct(nicheId, productTypeId, productName);
