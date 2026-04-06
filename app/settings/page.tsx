@@ -151,12 +151,26 @@ function SettingsContent() {
             </p>
           </div>
 
-          <Input
+          <Select
             label="Groq Model"
             value={settings.groqModel}
             onChange={(e) => set('groqModel', e.target.value)}
-            placeholder="llama-3.3-70b-versatile"
-          />
+          >
+            <optgroup label="Production">
+              <option value="llama-3.3-70b-versatile">Meta Llama 3.3 70B (llama-3.3-70b-versatile)</option>
+              <option value="llama-3.1-8b-instant">Meta Llama 3.1 8B (llama-3.1-8b-instant)</option>
+              <option value="openai/gpt-oss-120b">OpenAI GPT OSS 120B</option>
+              <option value="openai/gpt-oss-20b">OpenAI GPT OSS 20B</option>
+              <option value="groq/compound">Groq Compound</option>
+              <option value="groq/compound-mini">Groq Compound Mini</option>
+            </optgroup>
+            <optgroup label="Preview">
+              <option value="meta-llama/llama-4-scout-17b-16e-instruct">Meta Llama 4 Scout 17B</option>
+              <option value="moonshotai/kimi-k2-instruct">Moonshot Kimi K2</option>
+              <option value="moonshotai/kimi-k2-instruct-0905">Moonshot Kimi K2 (0905)</option>
+              <option value="qwen/qwen3-32b">Qwen3 32B</option>
+            </optgroup>
+          </Select>
 
           <div>
             <Input
