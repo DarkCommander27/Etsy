@@ -7,6 +7,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const nextConfig = {
 	serverExternalPackages: [],
 	outputFileTracingRoot: __dirname,
+	allowedDevOrigins: ['192.168.1.155'],
 };
 
 export default nextConfig;
