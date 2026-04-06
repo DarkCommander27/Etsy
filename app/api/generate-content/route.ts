@@ -4,7 +4,8 @@ import { ContentQualityTemplateId, ContentVariationId, getContentPrompt } from '
 import { readRequestJson } from '@/lib/utils';
 import { applyContentQualityRepairs, evaluateProductQuality, parseGeneratedProductContent, PRODUCT_QUALITY_MIN_SCORE, validateProductSelectionRequest } from '@/lib/validation/generated';
 
-const MAX_GENERATION_ATTEMPTS = 8;
+// 1 initial attempt + 2 feedback retries. Keeps cost and latency bounded.
+const MAX_GENERATION_ATTEMPTS = 3;
 
 function buildQualityRetryPrompt(basePrompt: string, issues: string[], attempt: number): string {
   if (!issues.length || attempt <= 1) return basePrompt;

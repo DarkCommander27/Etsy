@@ -166,7 +166,7 @@ describe('generation route validation', () => {
     const data = await response.json();
 
     expect(response.status).toBe(422);
-    expect(mocks.mockGenerateContent).toHaveBeenCalledTimes(4);
+    expect(mocks.mockGenerateContent).toHaveBeenCalledTimes(2);
     expect(data.error).toBe('Generated listing description did not meet Etsy quality requirements.');
     expect(data.details.some((issue: string) => issue.startsWith('Listing description must be between 200 and 350 words; current count is '))).toBe(true);
   });

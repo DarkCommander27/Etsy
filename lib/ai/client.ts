@@ -2,7 +2,8 @@ import OpenAI from 'openai';
 import { PROVIDERS, ProviderKey } from './providers';
 
 const AI_REQUEST_TIMEOUT_MS = 60_000;
-const AI_MAX_RETRIES = 1;
+// No SDK-level retries — our model fallback chain handles reliability explicitly.
+const AI_MAX_RETRIES = 0;
 
 export interface AISettings {
   provider?: string;

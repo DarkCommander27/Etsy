@@ -5,7 +5,8 @@ import { readRequestJson } from '@/lib/utils';
 import { STRICT_ETSY_LISTING_VALIDATION, parseGeneratedEtsyListing, validateEtsyListingGenerationRequest, validateListingTitleAgainstReference } from '@/lib/validation/generated';
 import { getEtsyCategoryForProduct } from '@/lib/etsy/categories';
 
-const MAX_LISTING_ATTEMPTS = 4;
+// 1 initial attempt + 1 feedback retry. Tight limit: each attempt costs an API call.
+const MAX_LISTING_ATTEMPTS = 2;
 
 export async function POST(req: NextRequest) {
   const parsedBody = await readRequestJson<unknown>(req);
