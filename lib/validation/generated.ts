@@ -960,16 +960,31 @@ export function parseGeneratedEtsyListing(
     };
   }
 
+  // Sanitize common model output issues before parsing:
+  // 1. Replace bare (unescaped) newlines inside JSON strings with \n
+  // 2. Remove trailing commas before } or ] (some models add them)
+  const sanitized = jsonText
+    .replace(/([^\\])("(?:[^"\\]|\\[\s\S])*")/g, (_match, pre, str) =>
+      pre + str.replace(/\n/g, '\\n').replace(/\r/g, '\\r')
+    )
+    .replace(/,\s*([}\]])/g, '$1');
+
   let parsed: unknown;
   try {
-    parsed = JSON.parse(jsonText);
+    parsed = JSON.parse(sanitized);
   } catch {
-    return {
-      success: false,
-      warnings,
-      issues: ['The extracted listing JSON could not be parsed.'],
-      error: 'The AI provider returned malformed listing JSON.',
-    };
+    // Last resort: try the original extraction in case sanitization mangled it
+    try {
+      parsed = JSON.parse(jsonText);
+    } catch {
+      console.error('[parseGeneratedEtsyListing] unparseable JSON:', jsonText.slice(0, 300));
+      return {
+        success: false,
+        warnings,
+        issues: ['The extracted listing JSON could not be parsed.'],
+        error: 'The AI provider returned malformed listing JSON.',
+      };
+    }
   }
 
   return validateEtsyListing(parsed, {

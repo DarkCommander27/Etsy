@@ -152,7 +152,7 @@ describe('generation route validation', () => {
     expect(data.listing.description).toBe(validDescription);
   });
 
-  it('returns 422 after all 8 generate-etsy attempts fail validation', async () => {
+  it('returns 422 after all 4 generate-etsy attempts fail validation', async () => {
     const invalidListing = buildListingJson(buildStrictDescription(73));
     mocks.mockGenerateContent.mockResolvedValue(invalidListing);
 
@@ -166,7 +166,7 @@ describe('generation route validation', () => {
     const data = await response.json();
 
     expect(response.status).toBe(422);
-    expect(mocks.mockGenerateContent).toHaveBeenCalledTimes(8);
+    expect(mocks.mockGenerateContent).toHaveBeenCalledTimes(4);
     expect(data.error).toBe('Generated listing description did not meet Etsy quality requirements.');
     expect(data.details.some((issue: string) => issue.startsWith('Listing description must be between 200 and 350 words; current count is '))).toBe(true);
   });

@@ -173,6 +173,7 @@ function GenerateContent() {
   const [etsyListing, setEtsyListing] = useState<EtsyListing | null>(null);
   const [listingWarnings, setListingWarnings] = useState<string[]>([]);
   const [etsyLoading, setEtsyLoading] = useState(false);
+  const [listingElapsed, setListingElapsed] = useState(0);
   const [etsyPrice, setEtsyPrice] = useState('5.00');
   const [etsyConnected, setEtsyConnected] = useState(false);
   const [etsyPublishing, setEtsyPublishing] = useState(false);
@@ -381,6 +382,14 @@ function GenerateContent() {
     return () => clearInterval(interval);
   }, [imageLoading]);
 
+  // Tick elapsed seconds while Etsy listing generation is in progress
+  useEffect(() => {
+    if (!etsyLoading) { setListingElapsed(0); return; }
+    setListingElapsed(0);
+    const interval = setInterval(() => setListingElapsed((s) => s + 1), 1000);
+    return () => clearInterval(interval);
+  }, [etsyLoading]);
+
   function hasOpenAIImageKey(): boolean {
     const settings = getSettings();
     return Boolean(String(settings?.openaiApiKey || '').trim());
@@ -501,9 +510,13 @@ function GenerateContent() {
       a.click();
 
       setAutomationStatus('Generating 3 Etsy listing images...');
-      const images = hasOpenAIImageKey()
-        ? await generateListingImages()
-        : [];
+      // Reuse already-generated images rather than triggering a new (costly, slow)
+      // OpenAI call on every PDF download.
+      const images = generatedImages.length > 0
+        ? generatedImages
+        : hasOpenAIImageKey()
+          ? await generateListingImages()
+          : [];
 
       const settings = getSettings();
       if (!etsyConnected || !settings.etsyShopId) {
@@ -1204,9 +1217,31 @@ function GenerateContent() {
               {/* Listing fields */}
               <div className="space-y-4">
                 {etsyLoading ? (
-                  <div className="flex items-center gap-2 text-slate-500 py-8">
-                    <Spinner />
-                    <span className="text-sm">Generating SEO-optimized listing…</span>
+                  <div className="mb-3 p-3 bg-indigo-50 dark:bg-indigo-950 border border-indigo-200 dark:border-indigo-800 rounded-lg">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <div className="flex items-center gap-2 text-indigo-700 dark:text-indigo-300">
+                        <Spinner />
+                        <span className="text-sm font-medium">Generating SEO-optimized listing…</span>
+                      </div>
+                      <span className="text-xs font-mono text-indigo-500 dark:text-indigo-400">{listingElapsed}s</span>
+                    </div>
+                    <div className="w-full bg-indigo-200 dark:bg-indigo-800 rounded-full h-1.5 mb-1.5">
+                      <div
+                        className="bg-indigo-500 h-1.5 rounded-full transition-all duration-1000"
+                        style={{ width: `${Math.min(100, (listingElapsed / 30) * 100)}%` }}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs text-indigo-600 dark:text-indigo-400">Usually takes 5–30 seconds depending on the model.</p>
+                      {listingElapsed >= 30 && (
+                        <button
+                          onClick={generateEtsyListing}
+                          className="text-xs text-indigo-600 dark:text-indigo-400 underline hover:text-indigo-800 dark:hover:text-indigo-200"
+                        >
+                          Taking too long? Retry
+                        </button>
+                      )}
+                    </div>
                   </div>
                 ) : etsyListing ? (
                   <>
