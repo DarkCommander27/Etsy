@@ -118,31 +118,40 @@ function buildPrompt(request: ListingImageRequest, variation: string): string {
 	].filter(Boolean).join(' ');
 }
 
-async function generateImagePng(prompt: string, apiKey: string): Promise<{ png: Buffer; width: number; height: number }> {
+async function generateImagePng(prompt: string, apiKey: string): Promise<{ png: Buffer; width: number; height: number; model: string }> {
 	// 90 s gives DALL-E 3 HD enough headroom (typical: 30-60 s).
 	const client = new OpenAI({ apiKey, timeout: 90_000, maxRetries: 0 });
 
-	// Try gpt-image-1 first (requires org-level access); fall back to dall-e-3.
+	// Try gpt-image-1 first (higher quality, 2x output size);
+	// fall back to dall-e-3 if this key has no access.
 	try {
 		const response = await client.images.generate({
 			model: 'gpt-image-1',
 			prompt,
 			size: '1536x1024',
+			quality: 'high',
 		});
 		const b64 = response.data?.[0]?.b64_json;
-		if (b64) return { png: Buffer.from(b64, 'base64'), width: 1536, height: 1024 };
+		if (b64) return { png: Buffer.from(b64, 'base64'), width: 1536, height: 1024, model: 'gpt-image-1' };
 	} catch (gptErr) {
-		// Re-throw real API errors (rate-limit, auth, quota) so they aren't silently
-		// swallowed and wrongly attributed to "model not available".
-		if (gptErr instanceof OpenAI.APIError && (gptErr.status === 429 || gptErr.status === 401 || gptErr.status === 403 || gptErr.status >= 500)) {
-			throw gptErr;
+		// Re-throw hard errors that dall-e-3 would also hit.
+		if (gptErr instanceof OpenAI.APIError) {
+			const code = (gptErr as unknown as { code?: string }).code ?? '';
+			const isContentPolicy = gptErr.status === 400 &&
+				(code === 'content_policy_violation' || /safety|content.policy/i.test(gptErr.message));
+			if (isContentPolicy || gptErr.status === 429 || gptErr.status === 401 || gptErr.status === 403 || gptErr.status >= 500) {
+				throw gptErr;
+			}
 		}
 		// gpt-image-1 not provisioned for this key — fall through to dall-e-3.
+		console.log('[generate-images] gpt-image-1 unavailable, falling back to dall-e-3');
 	}
 
+	// Truncate to DALL-E 3 max to prevent 400 invalid_request_error
+	const dallePrompt = prompt.length > 3999 ? prompt.slice(0, 3999) : prompt;
 	const response = await client.images.generate({
 		model: 'dall-e-3',
-		prompt,
+		prompt: dallePrompt,
 		size: '1792x1024',
 		quality: 'hd',
 		response_format: 'b64_json',
@@ -152,10 +161,10 @@ async function generateImagePng(prompt: string, apiKey: string): Promise<{ png: 
 	if (!b64) {
 		throw new Error('Image provider returned no image data.');
 	}
-	return { png: Buffer.from(b64, 'base64'), width: 1792, height: 1024 };
+	return { png: Buffer.from(b64, 'base64'), width: 1792, height: 1024, model: 'dall-e-3' };
 }
 
-export async function generateAndStoreListingImages(request: ListingImageRequest): Promise<{ images: ListingImageMeta[]; warnings: string[]; provider: 'openai' }> {
+export async function generateAndStoreListingImages(request: ListingImageRequest): Promise<{ images: ListingImageMeta[]; warnings: string[]; provider: 'openai'; model: string }> {
 	ensureGeneratedDir();
 	try {
 		pruneGeneratedImages();
@@ -179,8 +188,9 @@ export async function generateAndStoreListingImages(request: ListingImageRequest
 		const prompt = buildPrompt(request, IMAGE_VARIANTS[index] || IMAGE_VARIANTS[0]);
 		const filename = `${baseSlug}-${batchId}-${rank}.png`;
 		const filePath = path.join(GENERATED_DIR, filename);
-		return generateImagePng(prompt, apiKey).then(({ png, width, height }) => {
+		return generateImagePng(prompt, apiKey).then(({ png, width, height, model }) => {
 			fs.writeFileSync(filePath, png);
+			console.log(`[generate-images] image ${rank}/${count} generated via ${model}`);
 			return {
 				id: `${batchId}-${rank}`,
 				rank,
@@ -211,5 +221,11 @@ export async function generateAndStoreListingImages(request: ListingImageRequest
 		throw new Error(`All listing image generations failed.${detail}`);
 	}
 
-	return { images, warnings, provider: 'openai' };
+	// Determine which model was used (all images in a batch use the same model path)
+	const modelUsed = results
+		.find((r): r is PromiseFulfilledResult<ListingImageMeta & { _model?: string }> => r.status === 'fulfilled')
+		? (results[0].status === 'fulfilled' && images[0].width === 1536 ? 'gpt-image-1' : 'dall-e-3')
+		: 'dall-e-3';
+
+	return { images, warnings, provider: 'openai', model: modelUsed };
 }
