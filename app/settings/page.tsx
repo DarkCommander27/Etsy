@@ -15,6 +15,7 @@ interface Settings {
   geminiApiKey: string;
   geminiModel: string;
   groqApiKey: string;
+  groqModel: string;
   openaiApiKey: string;
   ollamaUrl: string;
   ollamaModel: string;
@@ -28,6 +29,7 @@ const defaults: Settings = {
   geminiApiKey: '',
   geminiModel: 'gemini-2.0-flash',
   groqApiKey: '',
+  groqModel: 'llama-3.3-70b-versatile',
   openaiApiKey: '',
   ollamaUrl: 'http://localhost:11434',
   ollamaModel: 'llama3',
@@ -148,6 +150,13 @@ function SettingsContent() {
               </a>
             </p>
           </div>
+
+          <Input
+            label="Groq Model"
+            value={settings.groqModel}
+            onChange={(e) => set('groqModel', e.target.value)}
+            placeholder="llama-3.3-70b-versatile"
+          />
 
           <div>
             <Input
@@ -279,7 +288,7 @@ function SettingsContent() {
         <h3 className="text-sm font-semibold text-blue-800 dark:text-blue-200 mb-2">💡 All AI providers are free</h3>
         <ul className="text-xs text-blue-700 dark:text-blue-300 space-y-1">
           <li>• <strong>Gemini</strong> — Best quality. Free 1,500 requests/day. Get key at ai.google.dev</li>
-          <li>• <strong>Groq</strong> — Ultra fast. Free 14,400 requests/day. Get key at console.groq.com</li>
+          <li>• <strong>Groq</strong> — Very fast. Free ~30 generations/day on llama-3.3-70b; auto-falls back to llama-3.1-8b-instant when the daily quota is reached. Get key at console.groq.com</li>
           <li>• <strong>Ollama</strong> — Fully local & unlimited. Install at ollama.com then run: <code className="bg-blue-100 dark:bg-blue-900 px-1 rounded">ollama pull llama3</code></li>
         </ul>
       </div>

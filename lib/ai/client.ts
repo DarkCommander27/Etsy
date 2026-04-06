@@ -9,6 +9,7 @@ export interface AISettings {
   geminiApiKey?: string;
   geminiModel?: string;
   groqApiKey?: string;
+  groqModel?: string;
   ollamaUrl?: string;
   ollamaModel?: string;
 }
@@ -61,7 +62,9 @@ function getProviderConfig(settings?: AISettings) {
       ? settings?.ollamaModel || config.model
       : provider === 'gemini'
         ? settings?.geminiModel || process.env.GEMINI_MODEL || config.model
-        : config.model;
+        : provider === 'groq'
+          ? settings?.groqModel || process.env.GROQ_MODEL || config.model
+          : config.model;
 
   return {
     provider,
@@ -188,10 +191,15 @@ REQUIREMENTS:
 4. Avoid generic hype, empty adjectives, and salesy nonsense.
 5. Return valid JSON only when asked — no markdown fences, no commentary.`;
 
+  // For Groq, fall back to the smaller 8b model (500k TPD limit) when the
+  // primary model exhausts its daily quota (100k TPD for 70b-versatile).
+  const GROQ_FALLBACK_MODEL = 'llama-3.1-8b-instant';
   const modelCandidates =
     provider === 'gemini'
       ? Array.from(new Set([model, 'gemini-1.5-flash']))
-      : [model];
+      : provider === 'groq'
+        ? Array.from(new Set([model, GROQ_FALLBACK_MODEL]))
+        : [model];
 
   let lastErr: unknown;
 
@@ -214,10 +222,16 @@ REQUIREMENTS:
       return response.choices[0]?.message?.content || '';
     } catch (err) {
       lastErr = err;
+      const isRateLimited =
+        typeof err === 'object' && err !== null && 'status' in err &&
+        (err as { status: number }).status === 429;
+
       const canRetryWithNextModel =
-        provider === 'gemini' &&
         i < modelCandidates.length - 1 &&
-        isGeminiRetryableModelError(err);
+        (
+          (provider === 'gemini' && isGeminiRetryableModelError(err)) ||
+          (provider === 'groq' && isRateLimited)
+        );
 
       if (!canRetryWithNextModel) {
         throw formatProviderError(err, provider, candidateModel);
