@@ -164,6 +164,7 @@ function GenerateContent() {
   const [imageWarnings, setImageWarnings] = useState<string[]>([]);
   const [imageProviderMode, setImageProviderMode] = useState<ImageProviderMode | null>(null);
   const [imageLoading, setImageLoading] = useState(false);
+  const [imageElapsed, setImageElapsed] = useState(0);
   const [titleIdeas, setTitleIdeas] = useState<ProductNameIdea[]>([]);
   const [titleIdeasLoading, setTitleIdeasLoading] = useState(false);
   const [titleIdeasError, setTitleIdeasError] = useState('');
@@ -371,6 +372,14 @@ function GenerateContent() {
     etsyListing, listingWarnings, etsyPrice, etsyPublished, publishWarnings,
     automationStatus,
   ]);
+
+  // Tick elapsed seconds while image generation is in progress
+  useEffect(() => {
+    if (!imageLoading) { setImageElapsed(0); return; }
+    setImageElapsed(0);
+    const interval = setInterval(() => setImageElapsed((s) => s + 1), 1000);
+    return () => clearInterval(interval);
+  }, [imageLoading]);
 
   function hasOpenAIImageKey(): boolean {
     const settings = getSettings();
@@ -1034,7 +1043,17 @@ function GenerateContent() {
               )}
               {imageLoading && (
                 <div className="mb-3 p-3 bg-indigo-50 dark:bg-indigo-950 border border-indigo-200 dark:border-indigo-800 rounded-lg">
-                  <p className="text-xs text-indigo-700 dark:text-indigo-300 font-medium">🎨 Generating your 3 Etsy listing images...</p>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <p className="text-xs text-indigo-700 dark:text-indigo-300 font-medium">🎨 Generating your 3 Etsy listing images...</p>
+                    <span className="text-xs font-mono text-indigo-500 dark:text-indigo-400">{imageElapsed}s</span>
+                  </div>
+                  <div className="w-full bg-indigo-200 dark:bg-indigo-800 rounded-full h-1.5 overflow-hidden">
+                    <div
+                      className="bg-indigo-500 h-1.5 rounded-full transition-all duration-1000"
+                      style={{ width: `${Math.min(100, (imageElapsed / 60) * 100)}%` }}
+                    />
+                  </div>
+                  <p className="text-xs text-indigo-400 dark:text-indigo-500 mt-1">Usually takes 30–60 seconds depending on the model.</p>
                 </div>
               )}
               {generatedImages.length > 0 && (
