@@ -119,7 +119,8 @@ function buildPrompt(request: ListingImageRequest, variation: string): string {
 }
 
 async function generateImagePng(prompt: string, apiKey: string): Promise<{ png: Buffer; width: number; height: number }> {
-	const client = new OpenAI({ apiKey, timeout: 60_000, maxRetries: 1 });
+	// 90 s gives DALL-E 3 HD enough headroom (typical: 30-60 s).
+	const client = new OpenAI({ apiKey, timeout: 90_000, maxRetries: 0 });
 
 	// Try gpt-image-1 first (requires org-level access); fall back to dall-e-3.
 	try {
@@ -130,8 +131,13 @@ async function generateImagePng(prompt: string, apiKey: string): Promise<{ png: 
 		});
 		const b64 = response.data?.[0]?.b64_json;
 		if (b64) return { png: Buffer.from(b64, 'base64'), width: 1536, height: 1024 };
-	} catch {
-		// gpt-image-1 not available for this key — fall through to dall-e-3
+	} catch (gptErr) {
+		// Re-throw real API errors (rate-limit, auth, quota) so they aren't silently
+		// swallowed and wrongly attributed to "model not available".
+		if (gptErr instanceof OpenAI.APIError && (gptErr.status === 429 || gptErr.status === 401 || gptErr.status === 403 || gptErr.status >= 500)) {
+			throw gptErr;
+		}
+		// gpt-image-1 not provisioned for this key — fall through to dall-e-3.
 	}
 
 	const response = await client.images.generate({
@@ -199,7 +205,10 @@ export async function generateAndStoreListingImages(request: ListingImageRequest
 	}
 
 	if (!images.length) {
-		throw new Error('All listing image generations failed.');
+		const detail = warnings.length
+			? ` Errors: ${warnings.join('; ')}`
+			: '';
+		throw new Error(`All listing image generations failed.${detail}`);
 	}
 
 	return { images, warnings, provider: 'openai' };

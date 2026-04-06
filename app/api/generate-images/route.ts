@@ -35,7 +35,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ images: result.images, warnings: result.warnings, provider: result.provider });
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Unknown error';
-    console.error('[generate-images] 500 error:', err);
-    return NextResponse.json({ error: msg }, { status: 500 });
+    console.error('[generate-images] error:', err);
+    // Surface the correct HTTP status for rate-limits / auth so the UI can
+    // show a meaningful message instead of a generic "server error".
+    let status = 500;
+    if ((err as { status?: number }).status === 429 || msg.includes('429') || /rate.?limit/i.test(msg)) {
+      status = 429;
+    } else if ((err as { status?: number }).status === 401 || /invalid.{0,30}api.{0,10}key|api key/i.test(msg)) {
+      status = 401;
+    }
+    return NextResponse.json({ error: msg }, { status });
   }
 }
