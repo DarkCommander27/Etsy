@@ -454,43 +454,65 @@ function getProductUsabilityIssues(content: ProductContent): string[] {
 }
 
 export function applyContentQualityRepairs(content: ProductContent): ProductContent {
+  // Repair date_label if the AI filled it with inspirational text instead of a fill-in placeholder.
+  // A proper date label is short, ends with underscores or a colon, and contains a date-related word.
+  let repairedDateLabel = content.date_label;
+  if (repairedDateLabel) {
+    const isProperLabel =
+      /_{3,}/.test(repairedDateLabel) ||                        // has underscores e.g. "Date: ___"
+      /^(date|week of|month|session date|tracking period)\s*:?\s*$/i.test(repairedDateLabel.trim()) || // bare label
+      (repairedDateLabel.length <= 30 && /^[^a-z]*((date|week|month|session|period)[^a-z]*:)/i.test(repairedDateLabel));
+    if (!isProperLabel) {
+      // Replace with a sensible default based on what the original label was trying to say
+      const lower = repairedDateLabel.toLowerCase();
+      if (/week/.test(lower)) repairedDateLabel = 'Week of: ___________';
+      else if (/month/.test(lower)) repairedDateLabel = 'Month: ___________';
+      else if (/session/.test(lower)) repairedDateLabel = 'Session Date: ___________';
+      else if (/period|tracking/.test(lower)) repairedDateLabel = 'Tracking Period: ___________';
+      else repairedDateLabel = 'Date: ___________';
+    }
+  }
+
+  const repaired: ProductContent = repairedDateLabel !== content.date_label
+    ? { ...content, date_label: repairedDateLabel }
+    : content;
   const hasGuidance = Boolean(
-    content.instructions ||
-    content.prompts?.length ||
-    content.steps?.length ||
-    content.columns?.length ||
-    content.after_instruction ||
-    content.after_dump_prompt
+    repaired.instructions ||
+    repaired.prompts?.length ||
+    repaired.steps?.length ||
+    repaired.columns?.length ||
+    repaired.after_instruction ||
+    repaired.after_dump_prompt
   );
 
   if (hasGuidance) {
-    return content;
+    return repaired;
   }
 
   const hasStructuredContent = Boolean(
-    content.sections?.length ||
-    content.categories?.length ||
-    content.time_blocks?.length ||
-    content.top_3_priorities?.length
+    repaired.sections?.length ||
+    repaired.categories?.length ||
+    repaired.time_blocks?.length ||
+    repaired.top_3_priorities?.length
   );
 
   if (!hasStructuredContent) {
-    return content;
+    return repaired;
   }
 
   let guidance = 'Work through each part in order, keep your answers specific, and choose one next action before you finish.';
 
-  if (content.time_blocks?.length || content.top_3_priorities?.length) {
+  if (repaired.time_blocks?.length || repaired.top_3_priorities?.length) {
     guidance = 'Start with your top priorities, then fill in the schedule with realistic tasks and finish by marking the most important next step.';
-  } else if (content.categories?.length) {
+  } else if (repaired.categories?.length) {
     guidance = 'Write at least one entry in each category, then circle the area that needs your attention first and take one small action.';
-  } else if (content.sections?.length) {
+  } else if (repaired.sections?.length) {
     guidance = 'Complete each section in order, keep answers concrete, and circle the item you will act on first when you are done.';
   }
 
   return {
-    ...content,
-    after_instruction: content.after_instruction || guidance,
+    ...repaired,
+    after_instruction: repaired.after_instruction || guidance,
   };
 }
 

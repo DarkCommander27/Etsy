@@ -218,6 +218,32 @@ describe('evaluateProductQuality', () => {
     expect(repaired.instructions).toBe('Write fast, do not self-edit, then choose one item to handle first.');
     expect(repaired.after_instruction).toBeUndefined();
   });
+
+  it('repairs date_label when AI fills it with inspirational text', () => {
+    const repaired = applyContentQualityRepairs({
+      title: 'Daily Planner',
+      subtitle: 'One step at a time',
+      date_label: "Today's Date: A new chance to connect with your goals",
+      sections: [
+        { name: 'Priorities', description: 'Top tasks', items: ['Task 1', 'Task 2', 'Task 3'] },
+      ],
+      instructions: 'Fill in each section.',
+    });
+    expect(repaired.date_label).toBe('Date: ___________');
+  });
+
+  it('does not repair a properly formatted date_label', () => {
+    const repaired = applyContentQualityRepairs({
+      title: 'Weekly Reset',
+      subtitle: 'Reflect and plan',
+      date_label: 'Week of: ___________',
+      sections: [
+        { name: 'Wins', description: 'What went well', items: ['Win 1', 'Win 2', 'Win 3'] },
+      ],
+      instructions: 'Work through each section.',
+    });
+    expect(repaired.date_label).toBe('Week of: ___________');
+  });
 });
 
 describe('validateEtsyListing', () => {
