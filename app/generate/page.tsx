@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useCallback, Suspense } from 'react';
+import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Image from 'next/image';
 import { NICHES, getNicheById, NICHE_LIGHT_COLORS, NICHE_TEXT_COLORS } from '@/lib/niches';
@@ -127,6 +127,8 @@ function ContentPreview({ content }: { content: Record<string, unknown> }) {
 
 type ImageProviderMode = 'openai';
 
+const GENERATE_DRAFT_KEY = 'etsy_generate_draft';
+
 interface ProductNameIdea {
   title: string;
   score: number;
@@ -180,6 +182,8 @@ function GenerateContent() {
   const [copied, setCopied] = useState<string | null>(null);
   const [showRawJson, setShowRawJson] = useState(false);
 
+  const hasSavedOnceRef = useRef(false);
+
   const niche = getNicheById(nicheId);
   const product = niche?.products.find((p) => p.id === productTypeId);
   const colorScheme = niche?.colorSchemes.find((c) => c.id === colorSchemeId) || niche?.colorSchemes[0];
@@ -206,6 +210,7 @@ function GenerateContent() {
     setAutomationStatus('');
     setError('');
     setShowRawJson(false);
+    try { localStorage.removeItem(GENERATE_DRAFT_KEY); } catch { /* ignore */ }
   }
 
   useEffect(() => {
@@ -306,6 +311,66 @@ function GenerateContent() {
       generateEtsyListing();
     }
   }, [step, etsyListing, etsyLoading, etsyError, nicheId, productTypeId, generateEtsyListing]);
+
+  // Restore in-progress draft from localStorage on mount (skipped when URL params are present)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (queryNicheId) return;
+    try {
+      const raw = localStorage.getItem(GENERATE_DRAFT_KEY);
+      if (!raw) return;
+      const d = JSON.parse(raw) as Record<string, unknown>;
+      if (typeof d.step === 'number') setStep(d.step);
+      if (typeof d.nicheId === 'string') setNicheId(d.nicheId);
+      if (typeof d.productTypeId === 'string') setProductTypeId(d.productTypeId);
+      if (typeof d.title === 'string') setTitle(d.title);
+      if (typeof d.colorSchemeId === 'string') setColorSchemeId(d.colorSchemeId);
+      if (typeof d.pageSize === 'string') setPageSize(d.pageSize);
+      if (d.content && typeof d.content === 'object') {
+        setContent(d.content as Record<string, unknown>);
+        if (typeof d.editableContent === 'string') setEditableContent(d.editableContent);
+      }
+      if (Array.isArray(d.contentWarnings)) setContentWarnings(d.contentWarnings as string[]);
+      if (typeof d.qualityScore === 'number') setQualityScore(d.qualityScore);
+      if (Array.isArray(d.qualityIssues)) setQualityIssues(d.qualityIssues as string[]);
+      if (d.qualityTemplateId === 'best-quality' || d.qualityTemplateId === 'default') setQualityTemplateId(d.qualityTemplateId);
+      if (typeof d.variationId === 'string') setVariationId(d.variationId as ContentVariationId);
+      if (Array.isArray(d.generatedImages)) setGeneratedImages(d.generatedImages as ListingImageMeta[]);
+      if (Array.isArray(d.imageWarnings)) setImageWarnings(d.imageWarnings as string[]);
+      if (d.imageProviderMode === 'openai') setImageProviderMode(d.imageProviderMode);
+      if (d.etsyListing && typeof d.etsyListing === 'object') setEtsyListing(d.etsyListing as EtsyListing);
+      if (Array.isArray(d.listingWarnings)) setListingWarnings(d.listingWarnings as string[]);
+      if (typeof d.etsyPrice === 'string') setEtsyPrice(d.etsyPrice);
+      if (d.etsyPublished && typeof d.etsyPublished === 'object') setEtsyPublished(d.etsyPublished as { listing_id: number });
+      if (Array.isArray(d.publishWarnings)) setPublishWarnings(d.publishWarnings as string[]);
+      if (typeof d.automationStatus === 'string') setAutomationStatus(d.automationStatus);
+    } catch { /* corrupt draft — ignore */ }
+  }, []);
+
+  // Persist draft to localStorage whenever relevant state changes
+  useEffect(() => {
+    if (!hasSavedOnceRef.current) {
+      hasSavedOnceRef.current = true;
+      return; // skip first run (before hydration has settled)
+    }
+    try {
+      localStorage.setItem(GENERATE_DRAFT_KEY, JSON.stringify({
+        step, nicheId, productTypeId, title, colorSchemeId, pageSize,
+        content, editableContent, contentWarnings, qualityScore, qualityIssues,
+        qualityTemplateId, variationId,
+        generatedImages, imageWarnings, imageProviderMode,
+        etsyListing, listingWarnings, etsyPrice, etsyPublished, publishWarnings,
+        automationStatus,
+      }));
+    } catch { /* localStorage quota or SSR — ignore */ }
+  }, [
+    step, nicheId, productTypeId, title, colorSchemeId, pageSize,
+    content, editableContent, contentWarnings, qualityScore, qualityIssues,
+    qualityTemplateId, variationId,
+    generatedImages, imageWarnings, imageProviderMode,
+    etsyListing, listingWarnings, etsyPrice, etsyPublished, publishWarnings,
+    automationStatus,
+  ]);
 
   function hasOpenAIImageKey(): boolean {
     const settings = getSettings();
