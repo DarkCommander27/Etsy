@@ -1,8 +1,8 @@
 import OpenAI from 'openai';
 import { PROVIDERS, ProviderKey } from './providers';
 
-const AI_REQUEST_TIMEOUT_MS = 30_000;
-const AI_MAX_RETRIES = 2;
+const AI_REQUEST_TIMEOUT_MS = 60_000;
+const AI_MAX_RETRIES = 1;
 
 export interface AISettings {
   provider?: string;
@@ -236,6 +236,8 @@ REQUIREMENTS:
       if (!canRetryWithNextModel) {
         throw formatProviderError(err, provider, candidateModel);
       }
+
+      console.warn(`[ai/client] ${provider}/${candidateModel} failed (${isRateLimited ? '429 rate-limit' : 'model error'}), falling back to ${modelCandidates[i + 1]}`);
     }
   }
 

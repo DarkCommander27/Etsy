@@ -70,6 +70,7 @@ export async function POST(req: NextRequest) {
       { status: 422 }
     );
   } catch (err) {
+    console.error('[generate-etsy] provider error:', err);
     if (err instanceof AIProviderError) {
       return NextResponse.json(
         {
