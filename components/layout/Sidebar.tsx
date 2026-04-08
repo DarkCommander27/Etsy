@@ -1,7 +1,7 @@
 'use client';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, Wand2, LayoutTemplate, Clock, Tag, Settings, TrendingUp } from 'lucide-react';
+import { Home, Wand2, LayoutTemplate, Clock, Tag, Settings, TrendingUp, Package } from 'lucide-react';
 import { clsx } from 'clsx';
 
 const nav = [
@@ -10,6 +10,7 @@ const nav = [
   { href: '/niche-research', label: 'Niche Research', icon: TrendingUp },
   { href: '/templates', label: 'Templates', icon: LayoutTemplate },
   { href: '/history', label: 'History', icon: Clock },
+  { href: '/bundle', label: 'Bundle Maker', icon: Package },
   { href: '/etsy-helper', label: 'Etsy Helper', icon: Tag },
   { href: '/settings', label: 'Settings', icon: Settings },
 ];
