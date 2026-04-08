@@ -384,7 +384,7 @@ export async function generatePDF(options: PDFOptions): Promise<Uint8Array> {
         y = descWrapped.finalY - 5;
       }
       items.forEach((item) => {
-        ensureSpace(24);
+        ensureSpace(28);
         page.drawRectangle({ x: margin + 5, y: y - 2, width: 7, height: 7, color: rgb(...accent) });
         const wrapped = drawWrappedText({
           page,
@@ -395,11 +395,19 @@ export async function generatePDF(options: PDFOptions): Promise<Uint8Array> {
           size: 9,
           minSize: 8,
           maxLines: 2,
-          lineHeight: 10,
+          lineHeight: 11,
           font: regular,
           color: rgb(...textColor),
         });
-        y -= Math.max(16, wrapped.linesUsed * 11);
+        // Write-in lines under fill-in items (e.g. "Habit 1: ___")
+        const isFillIn = safeText(item).includes('___');
+        if (isFillIn) {
+          const itemBottomY = y - Math.max(18, wrapped.linesUsed * 12);
+          page.drawLine({ start: { x: margin + 17, y: itemBottomY }, end: { x: margin + contentWidth, y: itemBottomY }, thickness: 0.4, color: rgb(...accent) });
+          y = itemBottomY - 8;
+        } else {
+          y -= Math.max(20, wrapped.linesUsed * 12);
+        }
       });
       y -= 6;
     });
@@ -437,9 +445,9 @@ export async function generatePDF(options: PDFOptions): Promise<Uint8Array> {
         color: rgb(...textColor),
       });
       for (let i = 0; i < 3; i++) {
-        page.drawLine({ start: { x: margin + 33, y: y - 22 - i * 14 }, end: { x: margin + contentWidth, y: y - 22 - i * 14 }, thickness: 0.4, color: rgb(...accent) });
+        page.drawLine({ start: { x: margin + 33, y: y - 22 - i * 20 }, end: { x: margin + contentWidth, y: y - 22 - i * 20 }, thickness: 0.4, color: rgb(...accent) });
       }
-      y -= 68;
+      y -= 80;
     });
   }
 
@@ -486,9 +494,9 @@ export async function generatePDF(options: PDFOptions): Promise<Uint8Array> {
       y = wrapped.finalY - 2;
       for (let i = 0; i < 3; i++) {
         page.drawLine({ start: { x: margin, y }, end: { x: margin + contentWidth, y }, thickness: 0.4, color: rgb(...accent) });
-        y -= 15;
+        y -= 20;
       }
-      y -= 5;
+      y -= 8;
     });
   }
 
@@ -572,7 +580,7 @@ export async function generatePDF(options: PDFOptions): Promise<Uint8Array> {
     (content?.affirmation || content?.reminder || content?.after_instruction || content?.note) as string
   );
   if (bottomText) {
-    ensureSpace(42);
+    // Draw at absolute bottom of the last page — no ensureSpace needed since y:18 is fixed
     page.drawRectangle({ x: margin, y: 18, width: contentWidth, height: 32, color: rgb(...secondary) });
     drawWrappedText({
       page,
