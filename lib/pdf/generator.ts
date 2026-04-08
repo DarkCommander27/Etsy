@@ -94,6 +94,63 @@ function drawWrappedText(args: {
   return { linesUsed: finalLines.length, finalY: currentY };
 }
 
+// Count [ ] occurrences to detect checkbox grid items like "Days 1-10: [ ][ ][ ]..."
+function countCheckboxes(text: string): number {
+  return (text.match(/\[\s*\]/g) || []).length;
+}
+
+// Draw a label + row of drawn square checkboxes (replaces "[ ][ ][ ]" text items)
+function drawCheckboxRow(args: {
+  page: PDFPage;
+  label: string;
+  checkCount: number;
+  x: number;
+  y: number;
+  maxWidth: number;
+  boxSize: number;
+  font: PDFFont;
+  primaryColor: ReturnType<typeof rgb>;
+  accentColor: ReturnType<typeof rgb>;
+  bgColor: ReturnType<typeof rgb>;
+  textColor: ReturnType<typeof rgb>;
+}): void {
+  const { page, label, checkCount, x, y, maxWidth, boxSize, font, primaryColor, accentColor, bgColor, textColor } = args;
+  const gap = 3;
+  const labelText = label.replace(/\[\s*\]/g, '').replace(/\s*:?\s*$/, '').trim();
+
+  // Draw the text label
+  if (labelText) {
+    page.drawText(labelText + ':', { x, y: y - 1, size: 8, font, color: textColor });
+  }
+
+  // Draw checkboxes after label (or from x if no label)
+  const labelWidth = labelText ? font.widthOfTextAtSize(labelText + ': ', 8) : 0;
+  const startX = x + labelWidth;
+  const available = maxWidth - labelWidth;
+  const totalBoxW = checkCount * (boxSize + gap);
+  // Clamp to available space
+  const actualCount = totalBoxW > available
+    ? Math.floor(available / (boxSize + gap))
+    : checkCount;
+
+  for (let i = 0; i < actualCount; i++) {
+    const bx = startX + i * (boxSize + gap);
+    page.drawRectangle({
+      x: bx, y: y - boxSize + 2,
+      width: boxSize, height: boxSize,
+      borderColor: primaryColor,
+      borderWidth: 1,
+      color: bgColor,
+    });
+  }
+
+  // If we had to clamp, draw continuation dots
+  if (actualCount < checkCount) {
+    const dotsX = startX + actualCount * (boxSize + gap) + 2;
+    page.drawText('…', { x: dotsX, y: y - 1, size: 8, font, color: accentColor });
+  }
+}
+
 export async function generatePDF(options: PDFOptions): Promise<Uint8Array> {
   const pdfDoc = await PDFDocument.create();
   let pageWidth: number, pageHeight: number;
@@ -384,29 +441,52 @@ export async function generatePDF(options: PDFOptions): Promise<Uint8Array> {
         y = descWrapped.finalY - 5;
       }
       items.forEach((item) => {
-        ensureSpace(28);
-        page.drawRectangle({ x: margin + 5, y: y - 2, width: 7, height: 7, color: rgb(...accent) });
-        const wrapped = drawWrappedText({
-          page,
-          text: safeText(item),
-          x: margin + 17,
-          y,
-          maxWidth: contentWidth - 20,
-          size: 9,
-          minSize: 8,
-          maxLines: 2,
-          lineHeight: 11,
-          font: regular,
-          color: rgb(...textColor),
-        });
-        // Write-in lines under fill-in items (e.g. "Habit 1: ___")
-        const isFillIn = safeText(item).includes('___');
-        if (isFillIn) {
-          const itemBottomY = y - Math.max(18, wrapped.linesUsed * 12);
-          page.drawLine({ start: { x: margin + 17, y: itemBottomY }, end: { x: margin + contentWidth, y: itemBottomY }, thickness: 0.4, color: rgb(...accent) });
-          y = itemBottomY - 8;
+        const itemText = safeText(item);
+        const boxCount = countCheckboxes(itemText);
+
+        if (boxCount >= 3) {
+          // Render as a drawn checkbox grid row instead of plain text
+          ensureSpace(22);
+          drawCheckboxRow({
+            page,
+            label: itemText,
+            checkCount: boxCount,
+            x: margin + 5,
+            y,
+            maxWidth: contentWidth - 10,
+            boxSize: 10,
+            font: regular,
+            primaryColor: rgb(...primary),
+            accentColor: rgb(...accent),
+            bgColor: rgb(...bg),
+            textColor: rgb(...textColor),
+          });
+          y -= 18;
         } else {
-          y -= Math.max(20, wrapped.linesUsed * 12);
+          ensureSpace(28);
+          page.drawRectangle({ x: margin + 5, y: y - 2, width: 7, height: 7, color: rgb(...accent) });
+          const wrapped = drawWrappedText({
+            page,
+            text: itemText,
+            x: margin + 17,
+            y,
+            maxWidth: contentWidth - 20,
+            size: 9,
+            minSize: 8,
+            maxLines: 2,
+            lineHeight: 11,
+            font: regular,
+            color: rgb(...textColor),
+          });
+          // Write-in line under fill-in items (e.g. "Habit 1: ___")
+          const isFillIn = itemText.includes('___');
+          if (isFillIn) {
+            const itemBottomY = y - Math.max(18, wrapped.linesUsed * 12);
+            page.drawLine({ start: { x: margin + 17, y: itemBottomY }, end: { x: margin + contentWidth, y: itemBottomY }, thickness: 0.4, color: rgb(...accent) });
+            y = itemBottomY - 8;
+          } else {
+            y -= Math.max(20, wrapped.linesUsed * 12);
+          }
         }
       });
       y -= 6;
