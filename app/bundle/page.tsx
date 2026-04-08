@@ -342,8 +342,8 @@ export default function BundlePage() {
             <div>
               <label className="text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">Tags ({listing.tags.length})</label>
               <div className="mt-1 flex flex-wrap gap-1.5">
-                {listing.tags.map((tag) => (
-                  <span key={tag} className="text-xs bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 px-2 py-0.5 rounded-full border border-indigo-200 dark:border-indigo-800">
+                {listing.tags.map((tag, i) => (
+                  <span key={`${i}-${tag}`} className="text-xs bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 px-2 py-0.5 rounded-full border border-indigo-200 dark:border-indigo-800">
                     {tag}
                   </span>
                 ))}

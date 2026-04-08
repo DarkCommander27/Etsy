@@ -99,6 +99,14 @@ function formatProviderError(
 }
 
 function isGroqRetryableError(err: unknown): boolean {
+  const isTimeout =
+    typeof err === 'object' && err !== null &&
+    (
+      (err as { code?: string }).code === 'ETIMEDOUT' ||
+      (err as { name?: string }).name === 'APIConnectionTimeoutError'
+    );
+  if (isTimeout) return true;
+
   const status =
     typeof err === 'object' && err !== null && 'status' in err && typeof (err as { status?: unknown }).status === 'number'
       ? (err as { status: number }).status
@@ -126,6 +134,14 @@ function isGroqRetryableError(err: unknown): boolean {
 }
 
 function isGeminiRetryableModelError(err: unknown): boolean {
+  const isTimeout =
+    typeof err === 'object' && err !== null &&
+    (
+      (err as { code?: string }).code === 'ETIMEDOUT' ||
+      (err as { name?: string }).name === 'APIConnectionTimeoutError'
+    );
+  if (isTimeout) return true;
+
   const status =
     typeof err === 'object' && err !== null && 'status' in err && typeof (err as { status?: unknown }).status === 'number'
       ? (err as { status: number }).status

@@ -127,10 +127,12 @@ function drawCheckboxRow(args: {
   const labelWidth = labelText ? font.widthOfTextAtSize(labelText + ': ', 8) : 0;
   const startX = x + labelWidth;
   const available = maxWidth - labelWidth;
-  const totalBoxW = checkCount * (boxSize + gap);
+  if (available <= boxSize) return; // label exhausts the row, nothing to draw
+  // Correct width: last box needs no trailing gap
+  const totalBoxW = checkCount * boxSize + Math.max(0, checkCount - 1) * gap;
   // Clamp to available space
   const actualCount = totalBoxW > available
-    ? Math.floor(available / (boxSize + gap))
+    ? Math.max(1, Math.floor((available - boxSize) / (boxSize + gap)) + 1)
     : checkCount;
 
   for (let i = 0; i < actualCount; i++) {
@@ -230,7 +232,7 @@ export async function generatePDF(options: PDFOptions): Promise<Uint8Array> {
   if (content?.instructions) {
     const instrText = safeText(content.instructions as string);
     if (instrText) {
-      ensureSpace(48);
+      ensureSpace(92); // header 22pt + 5×12pt lines + 10pt gap
       page.drawRectangle({ x: margin, y: y - 4, width: contentWidth, height: 20, color: rgb(...secondary) });
       page.drawText('HOW TO USE', { x: margin + 5, y, size: 9, font: bold, color: rgb(...primary) });
       y -= 22;
@@ -525,9 +527,10 @@ export async function generatePDF(options: PDFOptions): Promise<Uint8Array> {
         color: rgb(...textColor),
       });
       for (let i = 0; i < 3; i++) {
-        page.drawLine({ start: { x: margin + 33, y: y - 22 - i * 20 }, end: { x: margin + contentWidth, y: y - 22 - i * 20 }, thickness: 0.4, color: rgb(...accent) });
+        // Start below the maximum 2-line instruction (y-14 baseline, 9pt line height, ~6pt ascender → last line top ≈ y-17; add 4pt gap → y-30)
+        page.drawLine({ start: { x: margin + 33, y: y - 30 - i * 20 }, end: { x: margin + contentWidth, y: y - 30 - i * 20 }, thickness: 0.4, color: rgb(...accent) });
       }
-      y -= 80;
+      y -= 90;
     });
   }
 

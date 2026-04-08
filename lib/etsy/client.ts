@@ -219,7 +219,8 @@ export async function createListing(params: CreateListingParams) {
         tags: listingData.tags,
         state: 'draft',
       }),
-    }
+    },
+    { retries: 0 } // POST is not idempotent — never retry to avoid duplicate listings
   );
 
   if (!res.ok) {
